@@ -1,0 +1,18 @@
+[package]
+name = "rust-cuts"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rc"
+path = "src/main.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde_yaml = "0.9.33"
+serde = { version = "1.0.197", features = ["derive"] }
+shellexpand = "3.1.0"
+leon = "3.0.1"
+clap = { version = "4.5.4", features = ["derive"] }
+lazy_static = "1.4.0"
