@@ -1,17 +1,22 @@
 use std::env;
+use std::fmt::Display;
 use std::process::{Command, ExitCode};
 
 use clap::Parser;
-
-use command_definitions::LastCommandParameters;
-use command_selection::CommandSelectionResult::{Index, Quit, Rerun};
 
 mod cli_args;
 mod command_definitions;
 mod command_selection;
 mod file_handling;
 mod interpolation;
-mod execution;
+
+mod rc;
+
+
+use command_definitions::LastCommandParameters;
+use command_selection::CommandSelectionResult::{Index, Quit, Rerun};
+use crate::rc::error::Result;
+
 
 static DEFAULT_CONFIG_PATH: &str = "~/.rust-cuts/commands.yml";
 static DEFAULT_LAST_COMMAND_PATH: &str = "~/.rust-cuts/last_command.yml";
@@ -30,7 +35,11 @@ fn get_last_command_path(last_command_path_arg: Option<String>) -> String {
 }
 
 
-fn main() -> ExitCode {
+fn format_command_def(option: &impl Display, command_label: &impl Display) -> String {
+    format!("[{option}]: {command_label}")
+}
+
+fn execute() -> Result<()> {
     let args = cli_args::Args::parse();
 
     let shell = match env::var("SHELL") {
@@ -40,22 +49,11 @@ fn main() -> ExitCode {
 
     let config_path = get_config_path(args.config_path);
 
-    let parsed_command_defs = match file_handling::get_command_definitions(&config_path) {
-        Ok(value) => value,
-        Err(value) => {
-            eprintln!("{}", value);
-            return ExitCode::FAILURE;
-        },
-    };
+    let parsed_command_defs = file_handling::get_command_definitions(&config_path)?;
 
     let last_command_path = get_last_command_path(args.last_command_path);
 
-    let last_command= file_handling::get_last_command(&last_command_path);
-
-    let Ok(last_command) = last_command else {
-        eprintln!("{}", last_command.unwrap_err());
-        return ExitCode::FAILURE;
-    };
+    let last_command= file_handling::get_last_command(&last_command_path)?;
 
     let should_rerun_last_command;
 
@@ -75,11 +73,11 @@ fn main() -> ExitCode {
         true => Rerun(last_command.unwrap()),
         false => {
             for (index, command_def) in parsed_command_defs.iter().enumerate() {
-                println!("[{index}]: {}", command_def)
+                println!("{}", format_command_def(&index, &command_def));
             }
 
             if last_command.is_some() {
-                println!("[{}] {}", LAST_COMMAND_OPTION, last_command.as_ref().unwrap().command);
+                println!("{}", format_command_def(&LAST_COMMAND_OPTION, &last_command.as_ref().unwrap().command));
             }
             command_selection::read_option_input(parsed_command_defs.len(), last_command)
         }
@@ -112,7 +110,7 @@ fn main() -> ExitCode {
             last_command_to_write = None;
         }
         Quit => {
-            return ExitCode::SUCCESS;
+            return Ok(());
         }
     }
 
@@ -125,12 +123,12 @@ fn main() -> ExitCode {
     println!("Executing command:\n{}", args_as_string);
     if args.dry_run {
         println!("Dry run is specified, exiting without executing.");
-        return ExitCode::SUCCESS;
+        return Ok(());
     }
 
     if !args.force && !command_selection::confirm_command_should_run() {
         // Exit if command was not confirmed and was not forced
-        return ExitCode::SUCCESS;
+        return Ok(());
     }
 
     if args.skip_command_save {
@@ -138,12 +136,7 @@ fn main() -> ExitCode {
     } else {
         match last_command_to_write {
             Some(last_command_to_write) => {
-                let write_result = file_handling::write_last_command(&last_command_path, &last_command_to_write);
-
-                if write_result.is_err() {
-                    eprintln!("{}", write_result.unwrap_err());
-                    return ExitCode::FAILURE;
-                }
+                file_handling::write_last_command(&last_command_path, &last_command_to_write)?
             }
             None => {}
         }
@@ -153,5 +146,15 @@ fn main() -> ExitCode {
     // which will make it read ~/.rc or ~/.profile or whatever file
     command.args(vec!["-i", "-c", args_as_string.as_str()]);
 
-    return execution::execute_command(command);
+    return rc::execution::execute_command(command);
+}
+
+fn main() -> ExitCode {
+   match execute() {
+       Ok(_) => ExitCode::SUCCESS,
+       Err(e) => {
+           eprintln!("{}", e);
+           ExitCode::FAILURE
+       }
+   }
 }
