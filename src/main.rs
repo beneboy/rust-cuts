@@ -9,13 +9,13 @@ mod command_definitions;
 mod command_selection;
 mod file_handling;
 mod interpolation;
-
-mod rc;
+mod execution;
+mod error;
 
 
 use command_definitions::LastCommandParameters;
 use command_selection::CommandSelectionResult::{Index, Quit, Rerun};
-use crate::rc::error::Result;
+use crate::error::Result;
 
 
 static DEFAULT_CONFIG_PATH: &str = "~/.rust-cuts/commands.yml";
@@ -25,12 +25,12 @@ static LAST_COMMAND_OPTION: &str = "r";
 static DEFAULT_SHELL: &str = "/bin/bash";
 
 fn get_config_path(config_path_arg: Option<String>) -> String {
-    let ref config_path = config_path_arg.unwrap_or(DEFAULT_CONFIG_PATH.to_string());
+    let config_path = &config_path_arg.unwrap_or(DEFAULT_CONFIG_PATH.to_string());
     shellexpand::tilde(config_path).to_string()
 }
 
 fn get_last_command_path(last_command_path_arg: Option<String>) -> String {
-    let ref last_command_path = last_command_path_arg.unwrap_or(DEFAULT_LAST_COMMAND_PATH.to_string());
+    let last_command_path = &last_command_path_arg.unwrap_or(DEFAULT_LAST_COMMAND_PATH.to_string());
     shellexpand::tilde(last_command_path).to_string()
 }
 
@@ -133,20 +133,15 @@ fn execute() -> Result<()> {
 
     if args.skip_command_save {
       println!("Skipping command save was specified. Not (over)writing last command.");
-    } else {
-        match last_command_to_write {
-            Some(last_command_to_write) => {
-                file_handling::write_last_command(&last_command_path, &last_command_to_write)?
-            }
-            None => {}
-        }
+    } else if let Some(last_command_to_write) = last_command_to_write {
+        file_handling::write_last_command(&last_command_path, &last_command_to_write)?
     }
 
     // Give `-i` argument to start an interactive shell,
     // which will make it read ~/.rc or ~/.profile or whatever file
     command.args(vec!["-i", "-c", args_as_string.as_str()]);
 
-    return rc::execution::execute_command(command);
+    execution::execute_command(command)
 }
 
 fn main() -> ExitCode {

@@ -13,17 +13,6 @@ pub struct LastCommandParameters {
     pub working_directory: Option<String>
 }
 
-impl CommandDefinition {
-    pub fn to_string(&self) -> String {
-        match &self.name {
-            Some(name) => name.clone(),
-            None => {
-                self.command.join(" ")
-            }
-        }
-    }
-}
-
 #[derive(Deserialize, Debug)]
 pub struct CommandDefinition {
     pub command: Vec<String>,
@@ -34,7 +23,10 @@ pub struct CommandDefinition {
 
 impl Display for CommandDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.to_string().as_str())?;
-        Ok(())
+        if let Some(name) = &self.name {
+            f.write_str(name)
+        } else {
+            Ok(())
+        }
     }
 }

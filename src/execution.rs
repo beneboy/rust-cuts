@@ -1,8 +1,7 @@
 use std::process::{Command, Stdio};
 
-use rc::error::{Error, Result};
+use crate::error::{Error, Result};
 
-use crate::rc;
 
 pub fn execute_command(mut command: Command) -> Result<()> {
     let subprocess_exit_success = command
@@ -16,6 +15,6 @@ pub fn execute_command(mut command: Command) -> Result<()> {
     if subprocess_exit_success {
         Ok(())
     } else {
-        Err(Error::SubProcessExitFailure)
+        Err(Error::SubProcessExit)
     }
 }

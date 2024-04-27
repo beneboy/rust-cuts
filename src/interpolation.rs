@@ -18,7 +18,7 @@ pub fn build_default_lookup(definitions: &Option<Vec<ParameterDefinition>>) -> O
     }
 }
 
-pub fn interpolate_arguments(defaults: &Option<HashMap<String, String>>, arguments: &Vec<String>) -> Vec<String> {
+pub fn interpolate_arguments(defaults: &Option<HashMap<String, String>>, arguments: &[String]) -> Vec<String> {
     let mut interpolated_arguments: Vec<String> = vec![];
     for argument in arguments.iter() {
         match Template::parse(argument.as_ref()) {
@@ -53,5 +53,5 @@ pub fn interpolate_arguments(defaults: &Option<HashMap<String, String>>, argumen
             }
         }
     }
-    return interpolated_arguments;
+    interpolated_arguments
 }

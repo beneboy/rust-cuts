@@ -68,9 +68,9 @@ pub fn prompt_value(variable_name: &str, default_value: Option<String>) -> Strin
 
         let read_value = input.trim().to_string();
 
-        if read_value == "" {
-            if default_value.is_some() {
-                return default_value.unwrap();
+        if read_value.is_empty() {
+            if let Some(default_value) = default_value {
+                return default_value;
             }
         } else {
             return read_value;
