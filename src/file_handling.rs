@@ -1,7 +1,6 @@
 use std::fs::File;
 use std::path::Path;
-use crate::command_definitions::CommandDefinition;
-use crate::command_definitions::LastCommandParameters;
+use crate::command_definitions::{CommandDefinition, CommandExecutionTemplate};
 use crate::error::{Result, Error };
 
 
@@ -23,14 +22,14 @@ fn get_last_command_reader(last_command_path: &String) -> Result<Option<File>> {
     }
 }
 
-pub fn get_last_command(last_command_path: &String) -> Result<Option<LastCommandParameters>> {
+pub fn get_last_command(last_command_path: &String) -> Result<Option<CommandExecutionTemplate>> {
     let last_command_reader = get_last_command_reader(last_command_path)?;
     let Some(last_command_reader) = last_command_reader else {
         return Ok(None);
     };
 
     // This can't be shortcut with ? as there is an error/some confusion with serde wanting to deserialize the error
-    let last_command_parameter: serde_yaml::Result<LastCommandParameters> = serde_yaml::from_reader(last_command_reader);
+    let last_command_parameter: serde_yaml::Result<CommandExecutionTemplate> = serde_yaml::from_reader(last_command_reader);
 
     match last_command_parameter {
         Ok(last_command_parameter) => {
@@ -42,7 +41,7 @@ pub fn get_last_command(last_command_path: &String) -> Result<Option<LastCommand
     }
 }
 
-pub fn write_last_command(path: &str, last_command: &LastCommandParameters) -> Result<()> {
+pub fn write_last_command(path: &str, last_command: &CommandExecutionTemplate) -> Result<()> {
     let f = File::create(path);
 
     let Ok(f) = f else {

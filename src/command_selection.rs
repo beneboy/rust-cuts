@@ -1,15 +1,21 @@
 use std::io;
 use std::io::Write;
+use crate::command_definitions::CommandExecutionTemplate;
 use crate::LAST_COMMAND_OPTION;
-use crate::command_definitions::LastCommandParameters;
 
 pub enum CommandSelectionResult {
     Index(usize),
-    Rerun(LastCommandParameters),
+    Rerun(CommandExecutionTemplate),
     Quit,
 }
 
-pub fn read_option_input(max: usize, last_command_parameters: Option<LastCommandParameters>) -> CommandSelectionResult {
+pub enum CommandRunResult {
+    Yes,
+    No,
+    ChangeParams
+}
+
+pub fn read_option_input(max: usize, last_command_parameters: &Option<CommandExecutionTemplate>) -> CommandSelectionResult {
     loop {
         let rerun_text = match last_command_parameters.is_some() {
             true => format!(", or `{}` to re-run last", LAST_COMMAND_OPTION),
@@ -33,7 +39,7 @@ pub fn read_option_input(max: usize, last_command_parameters: Option<LastCommand
             match last_command_parameters {
                 None => continue,  // this shouldn't happen, but it's not a fatal error
                 Some(last_command_parameters) => {
-                    return CommandSelectionResult::Rerun(last_command_parameters);
+                    return CommandSelectionResult::Rerun(last_command_parameters.clone());
                 }
             }
         }
@@ -78,10 +84,15 @@ pub fn prompt_value(variable_name: &str, default_value: Option<String>) -> Strin
     }
 }
 
-pub fn confirm_command_should_run() -> bool {
+pub fn confirm_command_should_run(has_params: bool) -> CommandRunResult {
     loop {
-        // Prompt the user for input
-        print!("Are you sure you want to run? (Y/n): ");
+        let prompt_change_params = if has_params {
+            "/[c]hange parameters"
+        } else {
+            ""
+        };
+
+        print!("Are you sure you want to run? ([Y]es/[n]o{}): ", prompt_change_params);
         io::stdout().flush().expect("Failed to flush stdout");
 
         // Read user input
@@ -91,11 +102,15 @@ pub fn confirm_command_should_run() -> bool {
         let lowercase_input = input.trim().to_lowercase();
 
         if lowercase_input.as_str() == "y" || lowercase_input.is_empty() {
-            return true;
+            return CommandRunResult::Yes;
         }
 
         if lowercase_input.as_str() == "n" {
-            return false;
+            return CommandRunResult::No;
+        }
+
+        if has_params && lowercase_input.as_str() == "c" {
+            return CommandRunResult::ChangeParams
         }
     }
 }

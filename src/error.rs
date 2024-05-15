@@ -1,5 +1,5 @@
 use thiserror::Error;
-
+use leon::{ParseError, RenderError};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -19,6 +19,12 @@ pub enum Error {
 
     #[error("IO error with {} file at path `{}`: {}", .file_description, .path, .original)]
     Io{file_description: String, path: String, original: std::io::Error},
+
+    #[error("Error parsing placeholder string: {}", .0)]
+    Parse(#[from] ParseError),
+
+    #[error("Error placeholder template string: {}", .0)]
+    Render(#[from] RenderError)
 }
 
 impl Error {
