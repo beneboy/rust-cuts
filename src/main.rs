@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::fmt::Display;
 use std::process::{Command, ExitCode};
 
 use clap::Parser;
@@ -39,32 +38,33 @@ fn get_last_command_path(last_command_path_arg: Option<String>) -> String {
     shellexpand::tilde(last_command_path).to_string()
 }
 
-
-fn format_command_def(option: &impl Display, command_label: &impl Display) -> String {
-    format!("[{option}]: {command_label}")
-}
-
-/// Get the defaults for a command, which may be the provided values from the last run or those
-/// in the config.
-/// Also return should_prompt if the values should be prompted for.
-fn should_prompt_for_parameters(tokens: &HashSet<String>, provided_defaults: &Option<HashMap<String, String>>, is_rerun: bool) -> bool {
+/// Parameters should not be prompted for if:
+/// 1. There are no tokens to interpolate!
+/// 2. A command is being re-run, and all parameters were provided previously.*
+/// *: A re-run is based on the previous definition of the command, therefore the only way the
+/// command would not have all the parameters is if the last command YAML file was edited and had
+/// some parameters removed.
+fn should_prompt_for_parameters(
+    tokens: &HashSet<String>,
+    provided_defaults: &Option<HashMap<String, String>>,
+    is_rerun: bool
+) -> bool {
     if tokens.is_empty() {
         // If no tokens, then there should be no parameters and shouldn't be prompted
         return false;
     }
 
+    if !is_rerun {
+        return true;
+    }
+
     return match provided_defaults.as_ref() {
         Some(provided_defaults) => {
-            if is_rerun {
-                // If any of the tokens don't exist in the provided defaults,
-                // then we should prompt.
-                tokens.iter().any(|token| {
-                    !provided_defaults.contains_key(token)
-                })
-            } else {
-                // If it's not a rerun, then we should prompt, even if there are defaults
-                true
-            }
+            // If any of the tokens don't exist in the provided defaults,
+            // then we should prompt.
+            tokens.iter().any(|token| {
+                !provided_defaults.contains_key(token)
+            })
         },
         None => {
             // Provided defaults is none, we should prompt
@@ -90,33 +90,21 @@ fn execute() -> Result<()> {
 
     let last_command= file_handling::get_last_command(&last_command_path)?;
 
-    let should_rerun_last_command;
-
-    if args.rerun_last_command {
+    let should_rerun_last_command =  if args.rerun_last_command {
         if last_command.is_none() {
             warn!("Rerun last command was specified, but there is no previous command!");
-            should_rerun_last_command = false;
+            false
         } else {
-            should_rerun_last_command = true;
+            true
         }
     } else {
-        should_rerun_last_command = false;
-    }
+        false
+    };
 
     let selected_option = match should_rerun_last_command {
         true => Rerun(last_command.clone().unwrap()),
         false => {
-            for (index, command_def) in parsed_command_defs.iter().enumerate() {
-                println!("{}", format_command_def(&index, &command_def));
-            }
-
-            if let Some(last_command) = last_command.clone() {
-                let template_context = last_command.template_context;
-                let interpolated_last_command = interpolate_command(&template_context, &get_templates(&last_command.command)?)?;
-                println!("{}", format_command_def(&LAST_COMMAND_OPTION, &interpolated_last_command.join(" ")));
-            }
-
-            command_selection::read_option_input(parsed_command_defs.len(), &last_command)
+            command_selection::prompt_for_command_selection(&parsed_command_defs, &last_command)?
         }
     };
 
@@ -154,13 +142,14 @@ fn execute() -> Result<()> {
         } else if prompt_for_parameters {
             // On first loop, the defaults should be the normal defaults
             // Once template_context is set, that should be used as the default
-            template_context = get_template_context(&tokens,
-                                                    if template_context.is_none() {
-                                                        &defaults
-                                                    } else  {
-                                                        &template_context
-                                                    }
-            )
+            template_context = get_template_context(
+                &tokens,
+        if template_context.is_none() {
+                    &defaults
+                } else  {
+                    &template_context
+                }
+            )?
         } else {
             template_context = defaults.clone();
         };
@@ -184,7 +173,7 @@ fn execute() -> Result<()> {
             break;
         }
 
-        match command_selection::confirm_command_should_run(!tokens.is_empty()) {
+        match command_selection::confirm_command_should_run(!tokens.is_empty())? {
             CommandRunResult::Yes => {
                 // Break loop, do run
                 execution_context.template_context = template_context.clone();

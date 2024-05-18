@@ -1,5 +1,5 @@
-use thiserror::Error;
 use leon::{ParseError, RenderError};
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

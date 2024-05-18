@@ -1,6 +1,7 @@
 use std::collections::HashMap;
-use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug)]
 pub struct ParameterDefinition {

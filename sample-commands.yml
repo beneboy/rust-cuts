@@ -1,0 +1,15 @@
+# Move this to ~/rust-cuts/commands.yml
+- name: "Do hello world!"
+  command: ["echo", "Hello world!"]
+- name: "SSH to EC2"
+  command: ["ssh", "-i", "~/path/to/aws-key.pem", "{username}@{host}"]
+  parameters:
+    - name: "username"
+      default: "ubuntu"
+- name: "Build project"
+  command: [ "make", "build" ]
+  working_directory: "~/projects/rust-cuts/"
+- name: "List objects in S3 bucket"
+  command: ["aws", "s3", "ls", "{bucket}"]
+  environment:
+    AWS_PROFILE: dev

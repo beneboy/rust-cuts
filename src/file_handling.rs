@@ -1,8 +1,8 @@
 use std::fs::File;
 use std::path::Path;
-use crate::command_definitions::{CommandDefinition, CommandExecutionTemplate};
-use crate::error::{Result, Error };
 
+use crate::command_definitions::{CommandDefinition, CommandExecutionTemplate};
+use crate::error::{Error, Result};
 
 fn get_reader(file_description: &str, path: &str) -> Result<File> {
     match File::open(path) {

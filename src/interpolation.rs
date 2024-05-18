@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use leon::Template;
+
 use crate::command_definitions::ParameterDefinition;
 use crate::command_selection;
 use crate::error::Result;
@@ -20,9 +21,9 @@ pub fn build_default_lookup(definitions: &Option<Vec<ParameterDefinition>>) -> O
     }
 }
 
-pub fn get_template_context(tokens: &HashSet<String>, defaults: &Option<HashMap<String, String>>) -> Option<HashMap<String, String>> {
+pub fn get_template_context(tokens: &HashSet<String>, defaults: &Option<HashMap<String, String>>) -> Result<Option<HashMap<String, String>>> {
     if tokens.is_empty() {
-        return None;
+        return Ok(None);
     }
 
     let mut context: HashMap<String, String> = HashMap::new();
@@ -32,11 +33,11 @@ pub fn get_template_context(tokens: &HashSet<String>, defaults: &Option<HashMap<
             None => { None }
         };
 
-        let value = command_selection::prompt_value(key, default_value.cloned());
+        let value = command_selection::prompt_value(key, &default_value)?;
 
         context.insert(key.to_string(), value);
     }
-    Some(context)
+    Ok(Some(context))
 }
 
 /// Find all tokens in all arguments of templates of command.
