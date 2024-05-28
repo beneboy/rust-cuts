@@ -1,4 +1,5 @@
 use leon::{ParseError, RenderError};
+use log::error;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -12,33 +13,60 @@ pub enum Error {
     SubProcess(#[from] std::io::Error),
 
     #[error("Error {} {} file at `{}`: {}", .action, .file_description, .path, .original)]
-    Yaml{action: String, file_description: String, path: String, original: serde_yaml::Error},
+    Yaml {
+        action: String,
+        file_description: String,
+        path: String,
+        original: serde_yaml::Error,
+    },
 
     #[error("No commands were found in the command definition YAML. Is `{}` empty?", .path)]
-    EmptyCommandDefinition{path: String},
+    EmptyCommandDefinition { path: String },
 
     #[error("IO error with {} file at path `{}`: {}", .file_description, .path, .original)]
-    Io{file_description: String, path: String, original: std::io::Error},
+    Io {
+        file_description: String,
+        path: String,
+        original: std::io::Error,
+    },
 
     #[error("Error parsing placeholder string: {}", .0)]
     Parse(#[from] ParseError),
 
     #[error("Error placeholder template string: {}", .0)]
-    Render(#[from] RenderError)
+    Render(#[from] RenderError),
+
+    #[error("Rerun flag specified with an index is invalid.")]
+    RerunWithIndex,
+
+    #[error("Misc error: {}", .0)]
+    Misc(String),
 }
 
 impl Error {
     pub fn empty_command_definition(path: String) -> Self {
-        Self::EmptyCommandDefinition{path}
+        Self::EmptyCommandDefinition { path }
     }
 
-    pub fn yaml_error(action: String, file_description: String, path: String, original: serde_yaml::Error) -> Self {
-        Self::Yaml {action, file_description, path, original}
+    pub fn yaml_error(
+        action: String,
+        file_description: String,
+        path: String,
+        original: serde_yaml::Error,
+    ) -> Self {
+        Self::Yaml {
+            action,
+            file_description,
+            path,
+            original,
+        }
     }
 
     pub fn io_error(file_description: String, path: String, original: std::io::Error) -> Self {
-        Self::Io {file_description, path, original}
+        Self::Io {
+            file_description,
+            path,
+            original,
+        }
     }
 }
-
-

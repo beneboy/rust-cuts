@@ -7,7 +7,11 @@ use crate::error::{Error, Result};
 fn get_reader(file_description: &str, path: &str) -> Result<File> {
     match File::open(path) {
         Ok(reader) => Ok(reader),
-        Err(e) => Err(Error::io_error(file_description.to_string(), path.to_string(), e))
+        Err(e) => Err(Error::io_error(
+            file_description.to_string(),
+            path.to_string(),
+            e,
+        )),
     }
 }
 
@@ -29,15 +33,17 @@ pub fn get_last_command(last_command_path: &String) -> Result<Option<CommandExec
     };
 
     // This can't be shortcut with ? as there is an error/some confusion with serde wanting to deserialize the error
-    let last_command_parameter: serde_yaml::Result<CommandExecutionTemplate> = serde_yaml::from_reader(last_command_reader);
+    let last_command_parameter: serde_yaml::Result<CommandExecutionTemplate> =
+        serde_yaml::from_reader(last_command_reader);
 
     match last_command_parameter {
-        Ok(last_command_parameter) => {
-            Ok(Some(last_command_parameter))
-        }
-        Err(e) => {
-            Err(Error::yaml_error("reading".to_string(), "last command".to_string(), last_command_path.to_string(), e))
-        }
+        Ok(last_command_parameter) => Ok(Some(last_command_parameter)),
+        Err(e) => Err(Error::yaml_error(
+            "reading".to_string(),
+            "last command".to_string(),
+            last_command_path.to_string(),
+            e,
+        )),
     }
 }
 
@@ -45,13 +51,21 @@ pub fn write_last_command(path: &str, last_command: &CommandExecutionTemplate) -
     let f = File::create(path);
 
     let Ok(f) = f else {
-        return Err(Error::io_error("last command".to_string(), path.to_string(), f.unwrap_err()))
+        return Err(Error::io_error(
+            "last command".to_string(),
+            path.to_string(),
+            f.unwrap_err(),
+        ));
     };
 
-    serde_yaml::to_writer(f, &last_command)
-        .map_err(
-            |e| Error::yaml_error(path.to_string(), "writing".to_string(), "last command".to_string(), e)
+    serde_yaml::to_writer(f, &last_command).map_err(|e| {
+        Error::yaml_error(
+            path.to_string(),
+            "writing".to_string(),
+            "last command".to_string(),
+            e,
         )
+    })
 }
 
 pub fn get_command_definitions(config_path: &String) -> Result<Vec<CommandDefinition>> {
@@ -63,13 +77,18 @@ pub fn get_command_definitions(config_path: &String) -> Result<Vec<CommandDefini
         parsing_result = serde_yaml::from_reader(config_reader);
     }
 
-    let parsed_command_defs = parsing_result
-        .map_err(
-            |e| Error::yaml_error(config_path.clone(), "reading".to_string(), "config".to_string(), e)
-        )?;
+    let parsed_command_defs = parsing_result.map_err(|e| {
+        Error::yaml_error(
+            config_path.clone(),
+            "reading".to_string(),
+            "config".to_string(),
+            e,
+        )
+    })?;
 
-    match parsed_command_defs.is_empty() {
-        true => Err(Error::empty_command_definition(config_path.to_string())),
-        false => Ok(parsed_command_defs)
+    if parsed_command_defs.is_empty() {
+        Err(Error::empty_command_definition(config_path.to_string()))
+    } else {
+        Ok(parsed_command_defs)
     }
 }

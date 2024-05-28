@@ -2,6 +2,7 @@ use clap::Parser;
 
 #[derive(Parser, Debug)] // requires `derive` feature
 #[command(term_width = 0)] // Just to make testing across clap features easier
+#[allow(clippy::struct_excessive_bools)] // silence clippy's warning on this struct
 pub(crate) struct Args {
     /// Path to the commands definition config file YAML.
     #[arg(long, short = 'c')]
@@ -26,4 +27,7 @@ pub(crate) struct Args {
     /// Skip saving of this command as the last command to replay. Retains existing last command.
     #[arg(long, short = 's', action)]
     pub skip_command_save: bool,
+
+    #[arg(num_args(1))]
+    pub command_index: Option<usize>,
 }

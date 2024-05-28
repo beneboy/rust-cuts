@@ -15,7 +15,7 @@ pub struct CommandDefinition {
     pub name: Option<String>,
     pub working_directory: Option<String>,
     pub parameters: Option<Vec<ParameterDefinition>>,
-    pub environment: Option<HashMap<String, String>>
+    pub environment: Option<HashMap<String, String>>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -23,21 +23,19 @@ pub struct CommandExecutionTemplate {
     pub command: Vec<String>,
     pub working_directory: Option<String>,
     pub template_context: Option<HashMap<String, String>>,
-    pub environment: Option<HashMap<String, String>>
+    pub environment: Option<HashMap<String, String>>,
 }
 
-
 impl CommandExecutionTemplate {
-    pub fn from_command_definition(value: &CommandDefinition, template_context: Option<HashMap<String, String>>) -> Self {
+    pub fn from_command_definition(value: &CommandDefinition) -> Self {
         CommandExecutionTemplate {
             command: value.command.clone(),
             working_directory: value.working_directory.clone(),
-            template_context: template_context.clone(),
-            environment: value.environment.clone()
+            template_context: None,
+            environment: value.environment.clone(),
         }
     }
 }
-
 
 impl Display for CommandDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
