@@ -1,16 +1,19 @@
 use std::collections::{HashMap, HashSet};
 use std::env;
+use std::io::{stdout, Write};
 use std::process::{Command, ExitCode};
 
 use clap::Parser;
+use crossterm::terminal::{disable_raw_mode, ClearType};
+use crossterm::{cursor, queue, terminal};
 use itertools::Itertools;
 use log::{debug, info, warn};
 
 use crate::cli_args::Args;
 use command_selection::CommandChoice::{Index, Quit, Rerun};
 
-use crate::command_definitions::CommandExecutionTemplate;
-use crate::command_selection::RunChoice;
+use crate::command_definitions::{CommandDefinition, CommandExecutionTemplate};
+use crate::command_selection::{CommandChoice, RunChoice};
 use crate::error::{Error, Result};
 use crate::interpolation::{get_template_context, get_templates, get_tokens, interpolate_command};
 
@@ -22,11 +25,11 @@ mod execution;
 mod file_handling;
 mod interpolation;
 
-static DEFAULT_CONFIG_PATH: &str = "~/.rust-cuts/commands.yml";
-static DEFAULT_LAST_COMMAND_PATH: &str = "~/.rust-cuts/last_command.yml";
-static LAST_COMMAND_OPTION: &str = "r";
+const DEFAULT_CONFIG_PATH: &str = "~/.rust-cuts/commands.yml";
+const DEFAULT_LAST_COMMAND_PATH: &str = "~/.rust-cuts/last_command.yml";
+const LAST_COMMAND_OPTION: char = 'r';
 
-static DEFAULT_SHELL: &str = "/bin/bash";
+const DEFAULT_SHELL: &str = "/bin/bash";
 
 fn get_config_path(config_path_arg: &Option<String>) -> String {
     let config_path = match config_path_arg {
@@ -49,6 +52,7 @@ fn get_last_command_path(last_command_path_arg: &Option<String>) -> String {
 /// Parameters should not be prompted for if:
 /// 1. There are no tokens to interpolate!
 /// 2. A command is being re-run, and all parameters were provided previously.*
+///
 /// *: A re-run is based on the previous definition of the command, therefore the only way the
 /// command would not have all the parameters is if the last command YAML file was edited and had
 /// some parameters removed.
@@ -81,10 +85,7 @@ fn get_should_prompt_for_parameters(
     };
 }
 
-fn get_should_rerun_last_command(
-    args: &Args,
-    last_command: &Option<CommandExecutionTemplate>,
-) -> Result<bool> {
+fn get_rerun_request_is_valid(args: &Args) -> Result<bool> {
     if !args.rerun_last_command {
         return Ok(false);
     }
@@ -94,21 +95,13 @@ fn get_should_rerun_last_command(
         return Err(Error::RerunWithIndex);
     }
 
-    if last_command.is_none() {
-        warn!("Rerun last command was specified, but there is no previous command!");
-        return Ok(false);
-    }
-
     Ok(true)
 }
 
 fn execute() -> Result<()> {
     let args = cli_args::Args::parse();
 
-    let shell = match env::var("SHELL") {
-        Ok(shell) => shell,
-        Err(_) => DEFAULT_SHELL.to_string(),
-    };
+    let shell = env::var("SHELL").unwrap_or_else(|_| DEFAULT_SHELL.to_string());
 
     let config_path = get_config_path(&args.config_path);
     debug!("Config path: `{}`", config_path);
@@ -119,28 +112,21 @@ fn execute() -> Result<()> {
 
     let last_command = file_handling::get_last_command(&last_command_path)?;
 
-    let should_rerun_last_command = get_should_rerun_last_command(&args, &last_command)?;
-
-    let selected_option;
-
-    if should_rerun_last_command {
-        if args.command_index.is_some() {
-            // Can't rerun if an index is specified, doesn't make sense
-            return Err(Error::RerunWithIndex);
+    let rerun_option = if get_rerun_request_is_valid(&args)? {
+        if let Some(last_command) = &last_command {
+            Some(Rerun(last_command.clone()))
+        } else {
+            warn!("Rerun last command was specified, but there is no previous command!");
+            None
         }
-        selected_option = Rerun(last_command.clone().unwrap());
-    } else if let Some(index) = args.command_index {
-        if index >= parsed_command_defs.len() {
-            return Err(Error::Misc(
-                format!("Command index out of range: {index}!").to_string(),
-            ));
-        }
-
-        selected_option = Index(index);
     } else {
-        selected_option =
-            command_selection::prompt_for_command_choice(&parsed_command_defs, &last_command)?;
-    }
+        None
+    };
+
+    let selected_option = match rerun_option {
+        None => get_selected_option(&args, &parsed_command_defs, last_command.as_ref())?,
+        Some(rerun_option) => rerun_option,
+    };
 
     let mut execution_context: CommandExecutionTemplate;
     let defaults: Option<HashMap<String, String>>;
@@ -237,6 +223,37 @@ fn execute() -> Result<()> {
     command.args(vec!["-i", "-c", args_as_string.as_str()]);
 
     execution::execute_command(command, execution_context.environment)
+}
+
+fn get_selected_option(
+    args: &Args,
+    parsed_command_defs: &[CommandDefinition],
+    last_command: Option<&CommandExecutionTemplate>,
+) -> Result<CommandChoice> {
+    if let Some(index) = args.command_index {
+        if index >= parsed_command_defs.len() {
+            return Err(Error::Misc(
+                format!("Command index out of range: {index}!").to_string(),
+            ));
+        }
+
+        Ok(Index(index))
+    } else {
+        let selected_option =
+            command_selection::prompt_for_command_choice(parsed_command_defs, last_command)?;
+        disable_raw_mode()?;
+
+        let mut stdout = stdout();
+
+        queue!(
+            stdout,
+            cursor::MoveToColumn(0),
+            cursor::MoveToNextLine(1),
+            terminal::Clear(ClearType::CurrentLine)
+        )?;
+        stdout.flush()?;
+        Ok(selected_option)
+    }
 }
 
 fn print_command_and_environment(

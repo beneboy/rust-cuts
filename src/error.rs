@@ -41,6 +41,9 @@ pub enum Error {
 
     #[error("Misc error: {}", .0)]
     Misc(String),
+
+    #[error("STDIO error: {}", .0)]
+    Stdio(std::io::Error),
 }
 
 impl Error {

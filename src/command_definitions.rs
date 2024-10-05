@@ -3,13 +3,13 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct ParameterDefinition {
     pub name: String,
     pub default: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct CommandDefinition {
     pub command: Vec<String>,
     pub name: Option<String>,
@@ -44,5 +44,11 @@ impl Display for CommandDefinition {
         } else {
             Ok(())
         }
+    }
+}
+
+impl Display for CommandExecutionTemplate {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.command.join(" ").as_str())
     }
 }
