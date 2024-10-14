@@ -13,7 +13,7 @@ use crossterm::style::{
     Attribute, Color, Print, SetAttribute, SetBackgroundColor, SetForegroundColor,
 };
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType};
-use crossterm::{cursor, event, queue, terminal, ExecutableCommand};
+use crossterm::{cursor, event, queue, terminal, ExecutableCommand, execute};
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
 
@@ -441,12 +441,21 @@ pub fn prompt_for_command_choice(
                                 Some(Down)
                             };
                         }
-                        KeyCode::Enter => match indexes_to_display[selected_index] {
-                            Normal(i) => return Ok(CommandChoice::Index(i)),
-                            CommandIndex::Rerun => {
-                                if let Some(last_command) = last_command {
-                                    return Ok(CommandChoice::Rerun(last_command.clone()));
-                                };
+                        KeyCode::Enter => {
+                            if let Some(command_index) = indexes_to_display.get(selected_index) {
+                                match command_index {
+                                    Normal(i) => return Ok(CommandChoice::Index(*i)),
+                                    CommandIndex::Rerun => {
+                                        if let Some(last_command) = last_command {
+                                            return Ok(CommandChoice::Rerun(last_command.clone()));
+                                        };
+                                    }
+                                }
+                            } else {
+                                execute!(
+                                    stdout,
+                                    Print("\x07")
+                                )?;
                             }
                         },
                         KeyCode::Backspace => {
