@@ -4,13 +4,18 @@ use std::fmt::{Display, Formatter};
 use std::io::{stdin, stdout, Write};
 use std::time::Duration;
 
-use crossterm::{cursor, event, ExecutableCommand, queue, terminal};
-use crossterm::event::{DisableMouseCapture, Event, KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use crossterm::style::{Attribute, Color, Print, SetAttribute, SetBackgroundColor, SetForegroundColor};
+use crossterm::cursor::MoveTo;
+use crossterm::event::{
+    DisableMouseCapture, Event, KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use crossterm::style::Color::{DarkBlue, DarkGreen, Reset, Yellow};
-use crossterm::terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode};
-use fuzzy_matcher::FuzzyMatcher;
+use crossterm::style::{
+    Attribute, Color, Print, SetAttribute, SetBackgroundColor, SetForegroundColor,
+};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType};
+use crossterm::{cursor, event, queue, terminal, ExecutableCommand};
 use fuzzy_matcher::skim::SkimMatcherV2;
+use fuzzy_matcher::FuzzyMatcher;
 
 use crate::command_definitions::{CommandDefinition, CommandExecutionTemplate};
 use crate::command_selection::CommandIndex::Normal;
@@ -115,13 +120,11 @@ fn print_header(header_mode: &DisplayMode) -> Result<()> {
 
     let left_padding = " ".repeat(left_padding_size);
 
-
     let instructions = if header_mode.is_filtering {
-        "<esc>: exit filter"
+        "<esc>: Stop Filtering"
     } else {
-        "/: begin filter"
+        "/: Begin Filtering   |   q: Quit"
     };
-
 
     let right_padding = " ".repeat(width as usize - left_padding_size - instructions.len());
 
@@ -138,49 +141,71 @@ fn print_header(header_mode: &DisplayMode) -> Result<()> {
     Ok(())
 }
 
+fn clear_and_write_command_row(
+    row: u16,
+    commands_to_display: &HashMap<CommandIndex, String>,
+    command_index: &CommandIndex,
+    is_selected: bool,
+    terminal_width: Option<u16>,
+) -> Result<()> {
+    let mut stdout = stdout();
+    let terminal_width = terminal_width.unwrap_or_else(|| {
+        let (width, _) = terminal::size().unwrap_or((0, 0));
+        width
+    });
+
+    let max_digits = format!("{highest_index}", highest_index = commands_to_display.len()).len();
+
+    queue!(stdout, MoveTo(0, row), Clear(ClearType::CurrentLine))?;
+
+    let index_as_string = command_index.to_string();
+    let fw_index = format!("[{index_as_string:>max_digits$}] ");
+
+    let command_definition = commands_to_display.get(command_index).unwrap();
+    let content = format!("{fw_index} {command_definition}");
+    let padding = " ".repeat(terminal_width as usize - content.len());
+
+    if is_selected {
+        queue!(
+            stdout,
+            SetAttribute(Attribute::Bold),
+            SetBackgroundColor(DarkBlue),
+            SetForegroundColor(Yellow),
+        )?;
+    }
+
+    queue!(stdout, Print(content), Print(padding),)?;
+
+    queue!(
+        stdout,
+        SetAttribute(Attribute::Reset),
+        SetBackgroundColor(Reset),
+        SetForegroundColor(Reset),
+    )?;
+    stdout.flush()?;
+
+    Ok(())
+}
+
 fn print_commands_with_selection(
     commands_to_display: &HashMap<CommandIndex, String>,
     indexes_to_display: &[CommandIndex],
     selected_index: usize,
 ) -> Result<()> {
     let mut stdout = stdout();
-    let max_digits = format!("{highest_index}", highest_index = commands_to_display.len()).len();
-
 
     let (width, _) = terminal::size()?;
 
     for (i, index) in indexes_to_display.iter().enumerate() {
         let is_selected = i == selected_index;
-        let index_as_string = index.to_string();
-        let fw_index = format!("[{index_as_string:>max_digits$}] ");
-
-        let command_definition = commands_to_display.get(index).unwrap();
-        let content = format!("{fw_index} {command_definition}");
-        let padding = " ".repeat(width as usize - content.len());
-
-        if is_selected {
-            queue!(
-                stdout,
-                SetAttribute(Attribute::Bold),
-                SetBackgroundColor(DarkBlue),
-                SetForegroundColor(Yellow),
-
-                )?;
-        }
-
-        queue!(
-            stdout,
-            Print(content),
-            Print(padding),
-            cursor::MoveToNextLine(1)
+        clear_and_write_command_row(
+            i as u16 + 1,
+            commands_to_display,
+            index,
+            is_selected,
+            Some(width),
         )?;
-
-        queue!(
-            stdout,
-            SetAttribute(Attribute::Reset),
-            SetBackgroundColor(Reset),
-            SetForegroundColor(Reset),
-        )?;
+        queue!(stdout, cursor::MoveToNextLine(1))?;
     }
 
     if let Err(e) = stdout.flush() {
@@ -274,7 +299,9 @@ pub fn prompt_for_command_choice(
     let mut should_reprint = true;
     let mut typed_index = String::new();
     let mut filter_text = String::new();
-    let mut display_mode = DisplayMode { is_filtering: false };
+    let mut display_mode = DisplayMode {
+        is_filtering: false,
+    };
 
     let mut command_display: HashMap<CommandIndex, String> = command_definitions
         .iter()
@@ -339,7 +366,12 @@ pub fn prompt_for_command_choice(
 
         if event::poll(Duration::from_millis(500))? {
             match event::read()? {
-                Event::Mouse(MouseEvent { kind, row, modifiers, .. }) => {
+                Event::Mouse(MouseEvent {
+                    kind,
+                    row,
+                    modifiers,
+                    ..
+                }) => {
                     if modifiers == KeyModifiers::NONE {
                         match kind {
                             MouseEventKind::Down(button) => {
@@ -353,13 +385,34 @@ pub fn prompt_for_command_choice(
                                         let clicked_index = (down_row - 1) as usize;
 
                                         if clicked_index < indexes_to_display.len() {
+                                            clear_and_write_command_row(
+                                                down_row,
+                                                &command_display,
+                                                &indexes_to_display[selected_index],
+                                                false,
+                                                None,
+                                            )?;
+
+                                            clear_and_write_command_row(
+                                                down_row,
+                                                &command_display,
+                                                &indexes_to_display[clicked_index],
+                                                true,
+                                                None,
+                                            )?;
+
                                             selected_index = clicked_index;
-                                            should_reprint = true;
+                                            queue!(
+                                                stdout,
+                                                MoveTo(0, indexes_to_display.len() as u16 + 1)
+                                            )?;
                                             match indexes_to_display[clicked_index] {
                                                 Normal(i) => return Ok(CommandChoice::Index(i)),
                                                 CommandIndex::Rerun => {
                                                     if let Some(last_command) = last_command {
-                                                        return Ok(CommandChoice::Rerun(last_command.clone()));
+                                                        return Ok(CommandChoice::Rerun(
+                                                            last_command.clone(),
+                                                        ));
                                                     };
                                                 }
                                             }
@@ -387,7 +440,6 @@ pub fn prompt_for_command_choice(
                             } else {
                                 Some(Down)
                             };
-
                         }
                         KeyCode::Enter => match indexes_to_display[selected_index] {
                             Normal(i) => return Ok(CommandChoice::Index(i)),
@@ -403,12 +455,12 @@ pub fn prompt_for_command_choice(
                             }
                         }
                         KeyCode::Char('c')
-                        if key_event
-                            .modifiers
-                            .contains(crossterm::event::KeyModifiers::CONTROL) =>
-                            {
-                                return Ok(CommandChoice::Quit);
-                            }
+                            if key_event
+                                .modifiers
+                                .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                        {
+                            return Ok(CommandChoice::Quit);
+                        }
                         KeyCode::Char(c) if display_mode.is_filtering => {
                             filter_text.push(c);
                             should_reprint = true;
@@ -448,13 +500,25 @@ pub fn prompt_for_command_choice(
             match index_change_direction {
                 None => {}
                 Some(d) => {
-                    selected_index = move_selected_index(
-                        selected_index,
-                        indexes_to_display.len(),
-                        Some(&d),
-                    );
+                    clear_and_write_command_row(
+                        selected_index as u16 + 1,
+                        &command_display,
+                        &indexes_to_display[selected_index],
+                        false,
+                        None,
+                    )?;
+
+                    selected_index =
+                        move_selected_index(selected_index, indexes_to_display.len(), Some(&d));
+
+                    clear_and_write_command_row(
+                        selected_index as u16 + 1,
+                        &command_display,
+                        &indexes_to_display[selected_index],
+                        true,
+                        None,
+                    )?;
                     typed_index = selected_index.to_string();
-                    should_reprint = true;
                     index_change_direction = None;
                 }
             }

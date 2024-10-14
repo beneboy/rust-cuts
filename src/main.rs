@@ -4,7 +4,7 @@ use std::io::{stdout, Write};
 use std::process::{Command, ExitCode};
 
 use clap::Parser;
-use crossterm::terminal::{disable_raw_mode, ClearType};
+use crossterm::terminal::{disable_raw_mode, Clear, ClearType};
 use crossterm::{cursor, queue, terminal};
 use itertools::Itertools;
 use log::{debug, info, warn};
@@ -142,6 +142,8 @@ fn execute() -> Result<()> {
             defaults = last_command.template_context.clone();
         }
         Quit => {
+            let mut stdout = stdout();
+            queue!(stdout, Clear(ClearType::All),)?;
             return Ok(());
         }
     }
@@ -232,25 +234,25 @@ fn get_selected_option(
 ) -> Result<CommandChoice> {
     if let Some(index) = args.command_index {
         if index >= parsed_command_defs.len() {
-            return Err(Error::Misc(
-                format!("Command index out of range: {index}!"),
-            ));
+            return Err(Error::Misc(format!("Command index out of range: {index}!")));
         }
 
         Ok(Index(index))
     } else {
         let selected_option =
             command_selection::prompt_for_command_choice(parsed_command_defs, last_command)?;
-        disable_raw_mode()?;
 
         let mut stdout = stdout();
+
+        let (_, height) = terminal::size()?;
 
         queue!(
             stdout,
             cursor::MoveToColumn(0),
-            cursor::MoveToNextLine(1),
+            cursor::MoveToRow(height),
             terminal::Clear(ClearType::CurrentLine)
         )?;
+        disable_raw_mode()?;
         stdout.flush()?;
         Ok(selected_option)
     }

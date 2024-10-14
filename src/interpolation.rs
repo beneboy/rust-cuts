@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
 
 use leon::Template;
@@ -32,7 +33,7 @@ pub fn get_template_context(
     }
 
     let mut context: HashMap<String, String> = HashMap::new();
-    for key in tokens {
+    for key in tokens.iter().sorted() {
         let default_value = match defaults {
             Some(defaults) => defaults.get(key),
             None => None,

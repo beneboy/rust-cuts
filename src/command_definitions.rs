@@ -39,7 +39,9 @@ impl CommandExecutionTemplate {
 
 impl Display for CommandDefinition {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> Result {
-        self.name.as_ref().map_or(Ok(()), |name| formatter.write_str(name))
+        self.name
+            .as_ref()
+            .map_or(Ok(()), |name| formatter.write_str(name))
     }
 }
 
