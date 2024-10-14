@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Result};
 
 use serde::{Deserialize, Serialize};
 
@@ -28,7 +28,7 @@ pub struct CommandExecutionTemplate {
 
 impl CommandExecutionTemplate {
     pub fn from_command_definition(value: &CommandDefinition) -> Self {
-        CommandExecutionTemplate {
+        Self {
             command: value.command.clone(),
             working_directory: value.working_directory.clone(),
             template_context: None,
@@ -38,17 +38,13 @@ impl CommandExecutionTemplate {
 }
 
 impl Display for CommandDefinition {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if let Some(name) = &self.name {
-            f.write_str(name)
-        } else {
-            Ok(())
-        }
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result {
+        self.name.as_ref().map_or(Ok(()), |name| formatter.write_str(name))
     }
 }
 
 impl Display for CommandExecutionTemplate {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.command.join(" ").as_str())
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result {
+        formatter.write_str(self.command.join(" ").as_str())
     }
 }

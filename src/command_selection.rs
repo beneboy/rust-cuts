@@ -3,12 +3,13 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::io::{stdin, stdout, Write};
 
+use crossterm::{cursor, event, queue, terminal};
 use crossterm::event::{Event, KeyCode};
-use crossterm::style::{Attribute, Color, Print, SetAttribute, SetForegroundColor};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType};
-use crossterm::{cursor, event, queue};
-use fuzzy_matcher::skim::SkimMatcherV2;
+use crossterm::style::{Attribute, Color, Print, SetAttribute, SetBackgroundColor, SetForegroundColor};
+use crossterm::style::Color::{DarkBlue, DarkGreen, Reset, Yellow};
+use crossterm::terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode};
 use fuzzy_matcher::FuzzyMatcher;
+use fuzzy_matcher::skim::SkimMatcherV2;
 
 use crate::command_definitions::{CommandDefinition, CommandExecutionTemplate};
 use crate::command_selection::CommandIndex::Normal;
@@ -26,6 +27,10 @@ pub enum RunChoice {
     Yes,
     No,
     ChangeParams,
+}
+
+struct DisplayMode {
+    is_filtering: bool
 }
 
 pub fn prompt_value(variable_name: &str, default_value: Option<&String>) -> Result<String> {
@@ -101,6 +106,37 @@ impl Display for CommandIndex {
     }
 }
 
+fn print_header(header_mode: &DisplayMode) -> Result<()> {
+    let mut stdout = stdout();
+    let (width, _) = terminal::size()?;
+
+    let left_padding_size = 2usize;
+
+    let left_padding = " ".repeat(left_padding_size);
+
+
+    let instructions = if header_mode.is_filtering {
+        "<esc>: exit filter"
+    } else {
+        "/: begin filter"
+    };
+
+
+    let right_padding = " ".repeat(width as usize - left_padding_size - instructions.len());
+
+    queue!(
+        stdout,
+        SetBackgroundColor(DarkGreen),
+        Print(left_padding),
+        Print(instructions),
+        Print(right_padding),
+        SetBackgroundColor(Reset),
+        SetForegroundColor(Reset),
+    )?;
+
+    Ok(())
+}
+
 fn print_commands_with_selection(
     commands_to_display: &HashMap<CommandIndex, String>,
     indexes_to_display: &[CommandIndex],
@@ -109,17 +145,40 @@ fn print_commands_with_selection(
     let mut stdout = stdout();
     let max_digits = format!("{highest_index}", highest_index = commands_to_display.len()).len();
 
+
+    let (width, _) = terminal::size()?;
+
     for (i, index) in indexes_to_display.iter().enumerate() {
-        let prefix = if i == selected_index { "*" } else { " " };
+        let is_selected = i == selected_index;
         let index_as_string = index.to_string();
         let fw_index = format!("[{index_as_string:>max_digits$}] ");
 
         let command_definition = commands_to_display.get(index).unwrap();
+        let content = format!("{fw_index} {command_definition}");
+        let padding = " ".repeat(width as usize - content.len());
+
+        if is_selected {
+            queue!(
+                stdout,
+                SetAttribute(Attribute::Bold),
+                SetBackgroundColor(DarkBlue),
+                SetForegroundColor(Yellow),
+
+                )?;
+        }
 
         queue!(
             stdout,
-            Print(format!("{prefix} {fw_index} {command_definition}")),
+            Print(content),
+            Print(padding),
             cursor::MoveToNextLine(1)
+        )?;
+
+        queue!(
+            stdout,
+            SetAttribute(Attribute::Reset),
+            SetBackgroundColor(Reset),
+            SetForegroundColor(Reset),
         )?;
     }
 
@@ -212,7 +271,7 @@ pub fn prompt_for_command_choice(
     let mut should_reprint = true;
     let mut typed_index = String::new();
     let mut filter_text = String::new();
-    let mut filter_mode = false;
+    let mut display_mode = DisplayMode{is_filtering: false};
 
     let mut command_display: HashMap<CommandIndex, String> = command_definitions
         .iter()
@@ -240,6 +299,8 @@ pub fn prompt_for_command_choice(
 
             queue!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
 
+            print_header(&display_mode)?;
+
             if indexes_to_display.is_empty() {
                 queue!(
                     stdout,
@@ -256,8 +317,13 @@ pub fn prompt_for_command_choice(
                 )?;
             }
 
-            if filter_mode {
-                queue!(stdout, Print(format!("Filter: {filter_text}")))?;
+            if display_mode.is_filtering {
+                queue!(
+                    stdout,
+                    SetAttribute(Attribute::Bold),
+                    Print(format!("Filter: {filter_text}")),
+                    SetAttribute(Attribute::Reset)
+                )?;
             }
 
             stdout.flush()?;
@@ -294,26 +360,27 @@ pub fn prompt_for_command_choice(
                         }
                     }
                     KeyCode::Char('c')
-                        if key_event
-                            .modifiers
-                            .contains(crossterm::event::KeyModifiers::CONTROL) =>
-                    {
-                        return Ok(CommandChoice::Quit);
-                    }
-                    KeyCode::Char(c) if filter_mode => {
+                    if key_event
+                        .modifiers
+                        .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                        {
+                            return Ok(CommandChoice::Quit);
+                        }
+                    KeyCode::Char(c) if display_mode.is_filtering => {
                         filter_text.push(c);
                         should_reprint = true;
                     }
-                    KeyCode::Esc if filter_mode => {
-                        filter_mode = false;
+                    KeyCode::Esc if display_mode.is_filtering => {
+                        display_mode.is_filtering = false;
                         should_reprint = true;
+                        filter_text = "".to_string();
                     }
                     // KeyCode::Char(d) if d.is_ascii_digit() && !filter_mode => {
                     //     typed_index.push(d);
                     //     should_reprint = true;
                     // }
                     KeyCode::Char('/') => {
-                        filter_mode = true;
+                        display_mode.is_filtering = true;
                         should_reprint = true;
                     }
                     KeyCode::Char('q') => {

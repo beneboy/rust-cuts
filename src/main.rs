@@ -233,7 +233,7 @@ fn get_selected_option(
     if let Some(index) = args.command_index {
         if index >= parsed_command_defs.len() {
             return Err(Error::Misc(
-                format!("Command index out of range: {index}!").to_string(),
+                format!("Command index out of range: {index}!"),
             ));
         }
 
