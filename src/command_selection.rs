@@ -2,9 +2,10 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::io::{stdin, stdout, Write};
+use std::time::Duration;
 
-use crossterm::{cursor, event, queue, terminal};
-use crossterm::event::{Event, KeyCode};
+use crossterm::{cursor, event, ExecutableCommand, queue, terminal};
+use crossterm::event::{DisableMouseCapture, Event, KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use crossterm::style::{Attribute, Color, Print, SetAttribute, SetBackgroundColor, SetForegroundColor};
 use crossterm::style::Color::{DarkBlue, DarkGreen, Reset, Yellow};
 use crossterm::terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode};
@@ -30,7 +31,7 @@ pub enum RunChoice {
 }
 
 struct DisplayMode {
-    is_filtering: bool
+    is_filtering: bool,
 }
 
 pub fn prompt_value(variable_name: &str, default_value: Option<&String>) -> Result<String> {
@@ -266,12 +267,14 @@ pub fn prompt_for_command_choice(
 
     let mut selected_index: usize = 0;
     enable_raw_mode()?;
-    let _raw_mode_guard = RawModeGuard; // When this goes out of scope, raw mode is disabled
+
+    let _raw_mode_guard = RawModeGuard; // When this goes out of scope, raw mode and mouse capture is disabled
+    stdout.execute(event::EnableMouseCapture)?;
 
     let mut should_reprint = true;
     let mut typed_index = String::new();
     let mut filter_text = String::new();
-    let mut display_mode = DisplayMode{is_filtering: false};
+    let mut display_mode = DisplayMode { is_filtering: false };
 
     let mut command_display: HashMap<CommandIndex, String> = command_definitions
         .iter()
@@ -284,6 +287,10 @@ pub fn prompt_for_command_choice(
     }
 
     let mut indexes_to_display = filter_displayed_indexes(&command_display, &filter_text);
+
+    let mut down_row: Option<u16> = None;
+    let mut index_change_direction: Option<CycleDirection> = None;
+
     loop {
         if should_reprint {
             let indexes_before = indexes_to_display.clone();
@@ -329,69 +336,126 @@ pub fn prompt_for_command_choice(
             stdout.flush()?;
             should_reprint = false;
         }
-        if event::poll(std::time::Duration::from_millis(500))? {
-            if let Event::Key(key_event) = event::read()? {
-                match key_event.code {
-                    KeyCode::Up | KeyCode::Down => {
-                        let direction = if key_event.code == KeyCode::Up {
-                            Up
-                        } else {
-                            Down
-                        };
-                        selected_index = move_selected_index(
-                            selected_index,
-                            indexes_to_display.len(),
-                            Some(&direction),
-                        );
-                        typed_index = selected_index.to_string();
-                        should_reprint = true;
-                    }
-                    KeyCode::Enter => match indexes_to_display[selected_index] {
-                        Normal(i) => return Ok(CommandChoice::Index(i)),
-                        CommandIndex::Rerun => {
-                            if let Some(last_command) = last_command {
-                                return Ok(CommandChoice::Rerun(last_command.clone()));
-                            };
+
+        if event::poll(Duration::from_millis(500))? {
+            match event::read()? {
+                Event::Mouse(MouseEvent { kind, row, modifiers, .. }) => {
+                    if modifiers == KeyModifiers::NONE {
+                        match kind {
+                            MouseEventKind::Down(button) => {
+                                if button == MouseButton::Left {
+                                    down_row = Some(row);
+                                }
+                            }
+                            MouseEventKind::Up(button) => {
+                                if button == MouseButton::Left {
+                                    if let Some(down_row) = down_row {
+                                        let clicked_index = (down_row - 1) as usize;
+
+                                        if clicked_index < indexes_to_display.len() {
+                                            selected_index = clicked_index;
+                                            should_reprint = true;
+                                            match indexes_to_display[clicked_index] {
+                                                Normal(i) => return Ok(CommandChoice::Index(i)),
+                                                CommandIndex::Rerun => {
+                                                    if let Some(last_command) = last_command {
+                                                        return Ok(CommandChoice::Rerun(last_command.clone()));
+                                                    };
+                                                }
+                                            }
+                                        }
+                                    }
+                                    down_row = None;
+                                }
+                            }
+                            MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
+                                index_change_direction = if kind == MouseEventKind::ScrollDown {
+                                    Some(Down)
+                                } else {
+                                    Some(Up)
+                                };
+                            }
+                            _ => {}
                         }
-                    },
-                    KeyCode::Backspace => {
-                        if filter_text.pop().is_some() {
+                    }
+                }
+                Event::Key(key_event) => {
+                    match key_event.code {
+                        KeyCode::Up | KeyCode::Down => {
+                            index_change_direction = if key_event.code == KeyCode::Up {
+                                Some(Up)
+                            } else {
+                                Some(Down)
+                            };
+
+                        }
+                        KeyCode::Enter => match indexes_to_display[selected_index] {
+                            Normal(i) => return Ok(CommandChoice::Index(i)),
+                            CommandIndex::Rerun => {
+                                if let Some(last_command) = last_command {
+                                    return Ok(CommandChoice::Rerun(last_command.clone()));
+                                };
+                            }
+                        },
+                        KeyCode::Backspace => {
+                            if filter_text.pop().is_some() {
+                                should_reprint = true;
+                            }
+                        }
+                        KeyCode::Char('c')
+                        if key_event
+                            .modifiers
+                            .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                            {
+                                return Ok(CommandChoice::Quit);
+                            }
+                        KeyCode::Char(c) if display_mode.is_filtering => {
+                            filter_text.push(c);
                             should_reprint = true;
                         }
-                    }
-                    KeyCode::Char('c')
-                    if key_event
-                        .modifiers
-                        .contains(crossterm::event::KeyModifiers::CONTROL) =>
-                        {
+                        KeyCode::Esc if display_mode.is_filtering => {
+                            display_mode.is_filtering = false;
+                            should_reprint = true;
+                            filter_text = "".to_string();
+                        }
+                        // KeyCode::Char(d) if d.is_ascii_digit() && !filter_mode => {
+                        //     typed_index.push(d);
+                        //     should_reprint = true;
+                        // }
+                        KeyCode::Char('/') => {
+                            display_mode.is_filtering = true;
+                            should_reprint = true;
+                        }
+                        KeyCode::Char('q') => {
                             return Ok(CommandChoice::Quit);
                         }
-                    KeyCode::Char(c) if display_mode.is_filtering => {
-                        filter_text.push(c);
-                        should_reprint = true;
-                    }
-                    KeyCode::Esc if display_mode.is_filtering => {
-                        display_mode.is_filtering = false;
-                        should_reprint = true;
-                        filter_text = "".to_string();
-                    }
-                    // KeyCode::Char(d) if d.is_ascii_digit() && !filter_mode => {
-                    //     typed_index.push(d);
-                    //     should_reprint = true;
-                    // }
-                    KeyCode::Char('/') => {
-                        display_mode.is_filtering = true;
-                        should_reprint = true;
-                    }
-                    KeyCode::Char('q') => {
-                        return Ok(CommandChoice::Quit);
-                    }
-                    KeyCode::Char(LAST_COMMAND_OPTION) => {
-                        if let Some(last_command) = last_command {
-                            return Ok(CommandChoice::Rerun(last_command.clone()));
+                        KeyCode::Char(LAST_COMMAND_OPTION) => {
+                            if let Some(last_command) = last_command {
+                                return Ok(CommandChoice::Rerun(last_command.clone()));
+                            }
                         }
+                        _ => {}
                     }
-                    _ => {}
+                }
+                Event::Resize(_, _) => {
+                    should_reprint = true;
+                }
+                Event::FocusGained => {}
+                Event::FocusLost => {}
+                Event::Paste(_) => {}
+            }
+
+            match index_change_direction {
+                None => {}
+                Some(d) => {
+                    selected_index = move_selected_index(
+                        selected_index,
+                        indexes_to_display.len(),
+                        Some(&d),
+                    );
+                    typed_index = selected_index.to_string();
+                    should_reprint = true;
+                    index_change_direction = None;
                 }
             }
         }
@@ -404,5 +468,7 @@ impl Drop for RawModeGuard {
     fn drop(&mut self) {
         // Disable raw mode on drop
         let _ = disable_raw_mode();
+        let mut stdout = stdout();
+        let _ = stdout.execute(DisableMouseCapture);
     }
 }
