@@ -10,12 +10,37 @@ pub struct ParameterDefinition {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+pub struct CommandMetadata {
+    pub foreground_color: Option<(u8, u8, u8)>,
+    pub background_color: Option<(u8, u8, u8)>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
 pub struct CommandDefinition {
     pub command: Vec<String>,
     pub name: Option<String>,
     pub working_directory: Option<String>,
     pub parameters: Option<Vec<ParameterDefinition>>,
     pub environment: Option<HashMap<String, String>>,
+    pub metadata: Option<CommandMetadata>,
+}
+
+impl CommandDefinition {
+    pub fn foreground_color(&self) -> Option<(u8, u8, u8)> {
+        if let Some(metadata) = &self.metadata {
+            metadata.foreground_color
+        } else {
+            None
+        }
+    }
+
+    pub fn background_color(&self) -> Option<(u8, u8, u8)> {
+        if let Some(metadata) = &self.metadata {
+            metadata.background_color
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

@@ -13,7 +13,7 @@ use crossterm::style::{
     Attribute, Color, Print, SetAttribute, SetBackgroundColor, SetForegroundColor,
 };
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType};
-use crossterm::{cursor, event, queue, terminal, ExecutableCommand, execute};
+use crossterm::{cursor, event, execute, queue, terminal, ExecutableCommand};
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
 
@@ -143,7 +143,7 @@ fn print_header(header_mode: &DisplayMode) -> Result<()> {
 
 fn clear_and_write_command_row(
     row: u16,
-    commands_to_display: &HashMap<CommandIndex, String>,
+    commands_to_display: &HashMap<CommandIndex, CommandForDisplay>,
     command_index: &CommandIndex,
     is_selected: bool,
     terminal_width: Option<u16>,
@@ -174,6 +174,33 @@ fn clear_and_write_command_row(
         )?;
     }
 
+    let mut custom_background_color: Option<Color> = None;
+
+    if let CommandForDisplay::Normal(cd) = command_definition {
+        if let Some((r, g, b)) = cd.background_color() {
+            custom_background_color = Some(Color::Rgb { r, g, b })
+        }
+    };
+
+    let mut custom_foreground_color: Option<Color> = None;
+
+    if let CommandForDisplay::Normal(cd) = command_definition {
+        if let Some((r, g, b)) = cd.foreground_color() {
+            custom_foreground_color = Some(Color::Rgb { r, g, b })
+        }
+    };
+
+    if !is_selected {
+        let background_color = custom_background_color.unwrap_or(Reset);
+
+        let foreground_color = custom_foreground_color.unwrap_or(Reset);
+        queue!(
+            stdout,
+            SetBackgroundColor(background_color),
+            SetForegroundColor(foreground_color),
+        )?;
+    }
+
     queue!(stdout, Print(content), Print(padding),)?;
 
     queue!(
@@ -188,7 +215,7 @@ fn clear_and_write_command_row(
 }
 
 fn print_commands_with_selection(
-    commands_to_display: &HashMap<CommandIndex, String>,
+    commands_to_display: &HashMap<CommandIndex, CommandForDisplay>,
     indexes_to_display: &[CommandIndex],
     selected_index: usize,
 ) -> Result<()> {
@@ -251,7 +278,7 @@ fn move_selected_index(
 }
 
 fn filter_displayed_indexes(
-    command_lookup: &HashMap<CommandIndex, String>,
+    command_lookup: &HashMap<CommandIndex, CommandForDisplay>,
     predicate: &str,
 ) -> Vec<CommandIndex> {
     let matcher = SkimMatcherV2::default();
@@ -259,7 +286,9 @@ fn filter_displayed_indexes(
 
     let mut filtered: Vec<CommandIndex> = command_lookup
         .iter()
-        .filter_map(|(i, command_description)| {
+        .filter_map(|(i, command_for_display)| {
+            let command_description = command_for_display.to_string();
+
             if let Some(pred_idx) = predicate_index {
                 // Index-based filtering
                 i.to_string()
@@ -268,7 +297,7 @@ fn filter_displayed_indexes(
             } else {
                 // Fuzzy name-based filtering
                 matcher
-                    .fuzzy_match(command_description, predicate)
+                    .fuzzy_match(&command_description, predicate)
                     .map(|_| i.clone())
             }
         })
@@ -282,6 +311,20 @@ fn filter_displayed_indexes(
     });
 
     filtered
+}
+
+enum CommandForDisplay {
+    Normal(CommandDefinition),
+    Rerun(CommandExecutionTemplate),
+}
+
+impl Display for CommandForDisplay {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CommandForDisplay::Normal(n) => write!(f, "{}", n),
+            CommandForDisplay::Rerun(r) => write!(f, "{}", r),
+        }
+    }
 }
 
 pub fn prompt_for_command_choice(
@@ -303,14 +346,19 @@ pub fn prompt_for_command_choice(
         is_filtering: false,
     };
 
-    let mut command_display: HashMap<CommandIndex, String> = command_definitions
+    let mut command_display: HashMap<CommandIndex, CommandForDisplay> = command_definitions
         .iter()
         .enumerate()
-        .map(|(i, cd)| (CommandIndex::Normal(i), cd.to_string()))
+        .map(|(i, cd)| {
+            (
+                CommandIndex::Normal(i),
+                CommandForDisplay::Normal(cd.clone()),
+            )
+        })
         .collect();
 
     if let Some(lc) = last_command {
-        command_display.insert(CommandIndex::Rerun, lc.to_string());
+        command_display.insert(CommandIndex::Rerun, CommandForDisplay::Rerun(lc.clone()));
     }
 
     let mut indexes_to_display = filter_displayed_indexes(&command_display, &filter_text);
@@ -386,7 +434,7 @@ pub fn prompt_for_command_choice(
 
                                         if clicked_index < indexes_to_display.len() {
                                             clear_and_write_command_row(
-                                                down_row,
+                                                selected_index as u16 + 1,
                                                 &command_display,
                                                 &indexes_to_display[selected_index],
                                                 false,
@@ -452,12 +500,9 @@ pub fn prompt_for_command_choice(
                                     }
                                 }
                             } else {
-                                execute!(
-                                    stdout,
-                                    Print("\x07")
-                                )?;
+                                execute!(stdout, Print("\x07"))?;
                             }
-                        },
+                        }
                         KeyCode::Backspace => {
                             if filter_text.pop().is_some() {
                                 should_reprint = true;

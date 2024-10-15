@@ -244,7 +244,7 @@ fn get_selected_option(
 
         let mut stdout = stdout();
 
-        let (_, height) = terminal::size()?;
+        let (_, height) = terminal::size()?; // todo: Do this before so we only scroll to end of commands not to bottom of terminal
 
         queue!(
             stdout,
