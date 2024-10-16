@@ -176,17 +176,14 @@ fn clear_and_write_command_row(
 
     let mut custom_background_color: Option<Color> = None;
 
-    if let CommandForDisplay::Normal(cd) = command_definition {
-        if let Some((r, g, b)) = cd.background_color() {
-            custom_background_color = Some(Color::Rgb { r, g, b })
-        }
-    };
-
     let mut custom_foreground_color: Option<Color> = None;
-
     if let CommandForDisplay::Normal(cd) = command_definition {
-        if let Some((r, g, b)) = cd.foreground_color() {
-            custom_foreground_color = Some(Color::Rgb { r, g, b })
+        if let Some(b_c) = cd.background_color()? {
+            custom_background_color = Some(b_c);
+        }
+
+        if let Some(fc) = cd.foreground_color()? {
+            custom_foreground_color = Some(fc);
         }
     };
 

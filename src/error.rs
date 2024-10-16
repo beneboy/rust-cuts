@@ -20,6 +20,12 @@ pub enum Error {
         original: serde_yaml::Error,
     },
 
+    #[error("For a color, only one of `rgb`, `ansi` or `name` should be defined.")]
+    MultipleColorTypes,
+
+    #[error("Unknown color name: \"{}\"", _0)]
+    UnknownColorName(String),
+
     #[error("No commands were found in the command definition YAML. Is `{}` empty?", .path)]
     EmptyCommandDefinition { path: String },
 

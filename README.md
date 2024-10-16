@@ -31,17 +31,11 @@ Basic *Hello World* example:
   command: ["echo", "Hello world!"]
 ```
 
-When executing:
+When executing, a list of commands is displayed.
+These can be scrolled through with cursor keys or mousewheel.
+Hit `<enter>` to execute the selected command.
 
-```shell
-$ rc
-[0]: Do hello world!
-Enter an option (0-0. Quit with `q`): 0
-Executing command:
-echo Hello world!
-Are you sure you want to run? ([Y]es/[n]o): y
-Hello world!
-```
+Commands can also be clicked on.
 
 ## Templates
 
@@ -62,13 +56,9 @@ This is added to the `commands.yml`:
   command: ["ssh", "-i", "~/path/to/aws-key.pem", "{username}@{host}"]
 ```
 
-Execute `rc`:
+After selecting the command, the parameters are prompted for.
 
 ```shell
-➜  ~ rc
-[0]: Do hello world!
-[1]: SSH to EC2
-Enter an option (0-1. Quit with `q`): 1
 Please give value for `host`: 10.1.2.3
 Please give value for `username`: ec2-user
 Executing command:
@@ -95,10 +85,6 @@ We can update the previous example to provide a default for `username`:
 Now, if no value is provided, it defaults to `ubuntu`:
 
 ```shell
-➜  ~ rc
-[0]: Do hello world!
-[1]: SSH to EC2
-Enter an option (0-1. Quit with `q`): 1
 Please give value for `host`: 10.1.2.3
 Please give value for `username` [ubuntu]:
 Executing command:
@@ -192,3 +178,75 @@ Please give value for `path`: file\ with\ spaces.txt
 ```
 
 Both of these will cat the file `file with spaces.txt`.
+
+
+## Adding Colors To Commands
+
+To help differentiate between commands as they are listed,
+the background and foreground colors can be set.
+Add a `metadata` item under the command, with `foreground_color` and/or `background_color` options.
+
+For example:
+
+```yaml
+- name: "This command is colored!"
+  command: ["echo", "So pretty!"]
+  metadata:
+    background_color:
+      name: white  # named color
+    foreground_color:
+      name: red
+```
+
+Colors can be specified using RGB, ANSI value, or name.
+
+```yaml
+- name: "This command is colored!"
+  command: ["echo", "So pretty!"]
+  metadata:
+    background_color:
+      rgb: [255, 255, 255]  # white color using RGB components, 0 to 255
+    foreground_color:
+      name: [255, 0, 0]  # red color
+```
+
+(RGB colors are not supported on all platforms, e.g. macOS's built-in Terminal).
+
+```yaml
+- name: "This command is colored!"
+  command: ["echo", "So pretty!"]
+  metadata:
+    background_color:
+      ansi: 255  # white color using ANSI code
+    foreground_color:
+      ansi: 9  # red color
+```
+
+Both `background_color` and `foreground_color` are optional (you may choose to specify only one).
+Each does not need to use the same mode,
+for example you may use `ansi` for foreground and `rgb` for background.
+
+Only one of `ansi`, `rgb` or `name` may be specified per color.
+Specifying more than one will cause an error at runtime.
+
+### Color Names
+
+The following named colors are supported.
+They are case-insensitive.
+
+- `Black`
+- `DarkGrey`
+- `Red`
+- `DarkRed`
+- `Green`
+- `DarkGreen`
+- `Yellow`
+- `DarkYellow`
+- `Blue`
+- `DarkBlue`
+- `Magenta`
+- `DarkMagenta`
+- `Cyan`
+- `DarkCyan`
+- `White`
+- `Grey`
