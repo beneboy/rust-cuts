@@ -70,7 +70,7 @@ fn get_should_prompt_for_parameters(
         return true;
     }
 
-    return match provided_defaults.as_ref() {
+    match provided_defaults.as_ref() {
         Some(provided_defaults) => {
             // If any of the tokens don't exist in the provided defaults,
             // then we should prompt.
@@ -82,7 +82,7 @@ fn get_should_prompt_for_parameters(
             // Provided defaults is none, we should prompt
             true
         }
-    };
+    }
 }
 
 fn get_rerun_request_is_valid(args: &Args) -> Result<bool> {

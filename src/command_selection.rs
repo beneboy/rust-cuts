@@ -39,6 +39,12 @@ struct DisplayMode {
     is_filtering: bool,
 }
 
+struct ViewportState {
+    offset: usize,
+    height: u16,
+    width: u16,
+}
+
 pub fn prompt_value(variable_name: &str, default_value: Option<&String>) -> Result<String> {
     loop {
         if default_value.is_some() {
@@ -163,7 +169,12 @@ fn clear_and_write_command_row(
 
     let command_definition = commands_to_display.get(command_index).unwrap();
     let content = format!("{fw_index} {command_definition}");
-    let padding = " ".repeat(terminal_width as usize - content.len());
+
+    let padding = if content.len() < (terminal_width as usize) {
+        " ".repeat(terminal_width as usize - content.len())
+    } else {
+        "".to_string()
+    };
 
     if is_selected {
         queue!(
@@ -215,19 +226,23 @@ fn print_commands_with_selection(
     commands_to_display: &HashMap<CommandIndex, CommandForDisplay>,
     indexes_to_display: &[CommandIndex],
     selected_index: usize,
+    viewport: &ViewportState,
 ) -> Result<()> {
     let mut stdout = stdout();
 
-    let (width, _) = terminal::size()?;
+    let visible_commands = indexes_to_display.iter()
+        .skip(viewport.offset)
+        .take(viewport.height as usize);
 
-    for (i, index) in indexes_to_display.iter().enumerate() {
-        let is_selected = i == selected_index;
+    for (i, index) in visible_commands.enumerate() {
+        let is_selected = i + viewport.offset == selected_index;
+
         clear_and_write_command_row(
             i as u16 + 1,
             commands_to_display,
             index,
             is_selected,
-            Some(width),
+            Some(viewport.width),
         )?;
         queue!(stdout, cursor::MoveToNextLine(1))?;
     }
@@ -246,32 +261,45 @@ enum CycleDirection {
 
 fn move_selected_index(
     current_index: usize,
+    viewport: &mut ViewportState,
     commands_to_display_length: usize,
     direction: Option<&CycleDirection>,
-) -> usize {
+) -> (usize, bool) {
     if commands_to_display_length == 0 {
-        return 0;
+        return (0, false);
     }
 
-    let mut new_index: usize = current_index;
-
-    if new_index >= commands_to_display_length {
-        new_index = commands_to_display_length - 1
-    }
+    let mut new_index = current_index;
+    let mut viewport_changed = false;
 
     match direction {
         Some(Up) => {
             if new_index == 0 {
-                new_index = commands_to_display_length - 1
+                new_index = commands_to_display_length - 1;
+                viewport.offset = new_index.saturating_sub(viewport.height as usize - 1);
+                viewport_changed = true;
             } else {
-                new_index -= 1
+                new_index -= 1;
+                if new_index < viewport.offset {
+                    viewport.offset = new_index;
+                    viewport_changed = true;
+                }
             }
         }
-        Some(Down) => new_index += 1,
+        Some(Down) => {
+            new_index = (new_index + 1) % commands_to_display_length;
+            if new_index < current_index {
+                viewport.offset = 0;
+                viewport_changed = true;
+            } else if new_index >= viewport.offset + viewport.height as usize {
+                viewport.offset = new_index - viewport.height as usize + 1;
+                viewport_changed = true;
+            }
+        }
         None => {}
     }
 
-    new_index % commands_to_display_length
+    (new_index, viewport_changed)
 }
 
 fn filter_displayed_indexes(
@@ -363,6 +391,14 @@ pub fn prompt_for_command_choice(
     let mut down_row: Option<u16> = None;
     let mut index_change_direction: Option<CycleDirection> = None;
 
+    let (width, height) = terminal::size()?;
+
+    let mut viewport = ViewportState {
+        offset: 0,
+        height: height.saturating_sub(2), // Subtract 2 for header and filter line
+        width,
+    };
+
     loop {
         if should_reprint {
             let indexes_before = indexes_to_display.clone();
@@ -371,12 +407,12 @@ pub fn prompt_for_command_choice(
             if indexes_before == indexes_to_display {
                 selected_index = typed_index.parse::<usize>().unwrap_or(0);
             } else {
-                selected_index =
-                    move_selected_index(selected_index, indexes_to_display.len(), None);
+                (selected_index, _) =
+                    move_selected_index(selected_index, &mut viewport, indexes_to_display.len(), None);
                 typed_index = selected_index.to_string();
             }
 
-            queue!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+            queue!(stdout, Clear(ClearType::All), MoveTo(0, 0))?;
 
             print_header(&display_mode)?;
 
@@ -393,6 +429,7 @@ pub fn prompt_for_command_choice(
                     &command_display,
                     &indexes_to_display,
                     selected_index,
+                    &viewport
                 )?;
             }
 
@@ -427,7 +464,7 @@ pub fn prompt_for_command_choice(
                             MouseEventKind::Up(button) => {
                                 if button == MouseButton::Left {
                                     if let Some(down_row) = down_row {
-                                        let clicked_index = (down_row - 1) as usize;
+                                        let clicked_index = (down_row - 1) as usize + viewport.offset;
 
                                         if clicked_index < indexes_to_display.len() {
                                             clear_and_write_command_row(
@@ -540,7 +577,27 @@ pub fn prompt_for_command_choice(
                         _ => {}
                     }
                 }
-                Event::Resize(_, _) => {
+                Event::Resize(width, height) => {
+                    let new_height = height.saturating_sub(2);
+                    viewport.width = width;
+
+                    // If growing taller, try to show more items above current selection
+                    match new_height.cmp(&viewport.height) {
+                        Ordering::Greater if viewport.offset > 0 => {
+                            let height_increase = new_height - viewport.height;
+                            viewport.offset = viewport.offset.saturating_sub(height_increase as usize);
+                        }
+                        Ordering::Less if selected_index >= viewport.offset + new_height as usize => {
+                            viewport.offset = selected_index.saturating_sub(new_height as usize - 1);
+
+                            if viewport.offset + new_height as usize > indexes_to_display.len() {
+                                viewport.offset = indexes_to_display.len().saturating_sub(new_height as usize);
+                            }
+                        }
+                        _ => {}
+                    }
+
+                    viewport.height = new_height;
                     should_reprint = true;
                 }
                 Event::FocusGained => {}
@@ -551,24 +608,41 @@ pub fn prompt_for_command_choice(
             match index_change_direction {
                 None => {}
                 Some(d) => {
-                    clear_and_write_command_row(
-                        selected_index as u16 + 1,
-                        &command_display,
-                        &indexes_to_display[selected_index],
-                        false,
-                        None,
-                    )?;
+                    let (new_index, viewport_changed) =
+                        move_selected_index(selected_index, &mut viewport, indexes_to_display.len(), Some(&d));
 
-                    selected_index =
-                        move_selected_index(selected_index, indexes_to_display.len(), Some(&d));
+                    if viewport_changed {
+                        should_reprint = true;
+                    } else {
+                        // Calculate visible row positions relative to viewport
+                        let old_row = (selected_index - viewport.offset) as u16 + 1;
+                        let new_row = (new_index - viewport.offset) as u16 + 1;
 
-                    clear_and_write_command_row(
-                        selected_index as u16 + 1,
-                        &command_display,
-                        &indexes_to_display[selected_index],
-                        true,
-                        None,
-                    )?;
+                        // Only try to update individual rows if they're both visible
+                        if old_row > 0 && old_row <= viewport.height
+                            && new_row > 0 && new_row <= viewport.height {
+                            clear_and_write_command_row(
+                                old_row,
+                                &command_display,
+                                &indexes_to_display[selected_index],
+                                false,
+                                None,
+                            )?;
+
+                            clear_and_write_command_row(
+                                new_row,
+                                &command_display,
+                                &indexes_to_display[new_index],
+                                true,
+                                None,
+                            )?;
+                        } else {
+                            // If either row isn't visible, we need a full redraw
+                            should_reprint = true;
+                        }
+                    }
+
+                    selected_index = new_index;
                     typed_index = selected_index.to_string();
                     index_change_direction = None;
                 }
