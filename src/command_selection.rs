@@ -112,13 +112,13 @@ enum CommandIndex {
 impl Display for CommandIndex {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            CommandIndex::Normal(i) => f.write_str(format!("{i}").as_str()),
+            CommandIndex::Normal(i) => f.write_str(format!("{}", i+1).as_str()),
             CommandIndex::Rerun => f.write_str("r"),
         }
     }
 }
 
-fn print_header(header_mode: &DisplayMode) -> Result<()> {
+fn print_header(header_mode: &DisplayMode, selected_index: usize, command_display_count: usize) -> Result<()> {
     let mut stdout = stdout();
     let (width, _) = terminal::size()?;
 
@@ -127,15 +127,16 @@ fn print_header(header_mode: &DisplayMode) -> Result<()> {
     let left_padding = " ".repeat(left_padding_size);
 
     let instructions = if header_mode.is_filtering {
-        "<esc>: Stop Filtering"
+        "<esc>: Stop Filtering".to_string()
     } else {
-        "/: Begin Filtering   |   q: Quit"
+        format!("/: Begin Filtering   |   {}/{}   |   q: Quit", pad_to_width_of(selected_index + 1, command_display_count), command_display_count)
     };
 
     let right_padding = " ".repeat(width as usize - left_padding_size - instructions.len());
 
     queue!(
         stdout,
+        MoveTo(0, 0),
         SetBackgroundColor(DarkGreen),
         Print(left_padding),
         Print(instructions),
@@ -145,6 +146,11 @@ fn print_header(header_mode: &DisplayMode) -> Result<()> {
     )?;
 
     Ok(())
+}
+
+fn pad_to_width_of<T: Display>(value: T, max_number: usize) -> String {
+    let width = format!("{}", max_number).len();
+    format!("{:>width$}", value.to_string())
 }
 
 fn clear_and_write_command_row(
@@ -160,12 +166,10 @@ fn clear_and_write_command_row(
         width
     });
 
-    let max_digits = format!("{highest_index}", highest_index = commands_to_display.len()).len();
-
     queue!(stdout, MoveTo(0, row), Clear(ClearType::CurrentLine))?;
 
-    let index_as_string = command_index.to_string();
-    let fw_index = format!("[{index_as_string:>max_digits$}] ");
+    let index_as_string = pad_to_width_of(command_index, commands_to_display.len() + 1);
+    let fw_index = format!("[{index_as_string}]");
 
     let command_definition = commands_to_display.get(command_index).unwrap();
     let content = format!("{fw_index} {command_definition}");
@@ -414,7 +418,7 @@ pub fn prompt_for_command_choice(
 
             queue!(stdout, Clear(ClearType::All), MoveTo(0, 0))?;
 
-            print_header(&display_mode)?;
+            print_header(&display_mode, selected_index, indexes_to_display.len())?;
 
             if indexes_to_display.is_empty() {
                 queue!(
@@ -614,6 +618,8 @@ pub fn prompt_for_command_choice(
                     if viewport_changed {
                         should_reprint = true;
                     } else {
+                        print_header(&display_mode, new_index, indexes_to_display.len())?;
+
                         // Calculate visible row positions relative to viewport
                         let old_row = (selected_index - viewport.offset) as u16 + 1;
                         let new_row = (new_index - viewport.offset) as u16 + 1;
