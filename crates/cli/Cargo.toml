@@ -1,0 +1,17 @@
+[package]
+name = "rust-cuts-cli"
+version = "0.2.0"
+edition = "2021"
+
+[[bin]]
+name = "rc"
+path = "src/main.rs"
+
+[dependencies]
+rust-cuts-core = { path = "../core" }
+clap = { version = "4.5.4", features = ["derive"] }
+crossterm = "0.28.1"
+fuzzy-matcher = "0.3.7"
+log = "0.4.21"
+itertools = "0.14.0"
+env_logger = "0.11.3"

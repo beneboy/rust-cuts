@@ -4,50 +4,27 @@ use std::io::{stdout, Write};
 use std::process::{Command, ExitCode};
 
 use clap::Parser;
-use crossterm::terminal::{disable_raw_mode, Clear, ClearType};
 use crossterm::{cursor, queue, terminal};
+use crossterm::terminal::{Clear, ClearType, disable_raw_mode};
 use itertools::Itertools;
 use log::{debug, info, warn};
 
-use crate::cli_args::Args;
 use command_selection::CommandChoice::{Index, Quit, Rerun};
+use command_selection::get_template_context;
+use rust_cuts_core::{config, file_handling, interpolation};
+use rust_cuts_core::command_definitions::{CommandDefinition, CommandExecutionTemplate};
+use rust_cuts_core::config::DEFAULT_SHELL;
+use rust_cuts_core::error::{Error, Result};
+use rust_cuts_core::execution;
 
-use crate::command_definitions::{CommandDefinition, CommandExecutionTemplate};
+use crate::cli_args::Args;
 use crate::command_selection::{CommandChoice, RunChoice};
-use crate::error::{Error, Result};
-use crate::interpolation::{get_template_context, get_templates, get_tokens, interpolate_command};
+use rust_cuts_core::interpolation::{get_templates, get_tokens, interpolate_command};
 
+pub mod command_selection;
 mod cli_args;
-mod command_definitions;
-mod command_selection;
-mod error;
-mod execution;
-mod file_handling;
-mod interpolation;
 
-const DEFAULT_CONFIG_PATH: &str = "~/.rust-cuts/commands.yml";
-const DEFAULT_LAST_COMMAND_PATH: &str = "~/.rust-cuts/last_command.yml";
 const LAST_COMMAND_OPTION: char = 'r';
-
-const DEFAULT_SHELL: &str = "/bin/bash";
-
-fn get_config_path(config_path_arg: &Option<String>) -> String {
-    let config_path = match config_path_arg {
-        Some(last_command_path) => last_command_path,
-        None => DEFAULT_CONFIG_PATH,
-    };
-
-    shellexpand::tilde(config_path).to_string()
-}
-
-fn get_last_command_path(last_command_path_arg: &Option<String>) -> String {
-    let last_command_path = match last_command_path_arg {
-        Some(last_command_path) => last_command_path,
-        None => DEFAULT_LAST_COMMAND_PATH,
-    };
-
-    shellexpand::tilde(last_command_path).to_string()
-}
 
 /// Parameters should not be prompted for if:
 /// 1. There are no tokens to interpolate!
@@ -103,12 +80,12 @@ fn execute() -> Result<()> {
 
     let shell = env::var("SHELL").unwrap_or_else(|_| DEFAULT_SHELL.to_string());
 
-    let config_path = get_config_path(&args.config_path);
+    let config_path = config::get_config_path(&args.config_path);
     debug!("Config path: `{}`", config_path);
 
     let parsed_command_defs = file_handling::get_command_definitions(&config_path)?;
 
-    let last_command_path = get_last_command_path(&args.last_command_path);
+    let last_command_path = config::get_last_command_path(&args.last_command_path);
 
     let last_command = file_handling::get_last_command(&last_command_path)?;
 
@@ -209,9 +186,8 @@ fn execute() -> Result<()> {
     }
 
     let mut command = Command::new(shell);
-    if let Some(working_directory) = &execution_context.working_directory {
-        let expanded_working_dir = shellexpand::tilde(working_directory.as_str());
-        command.current_dir(expanded_working_dir.as_ref());
+    if let Some(working_directory) = config::expand_working_directory(&execution_context.working_directory) {
+        command.current_dir(working_directory);
     }
 
     if args.skip_command_save {

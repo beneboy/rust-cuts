@@ -3,7 +3,7 @@ use clap::Parser;
 #[derive(Parser, Debug)] // requires `derive` feature
 #[command(term_width = 0)] // Just to make testing across clap features easier
 #[allow(clippy::struct_excessive_bools)] // silence clippy's warning on this struct
-pub(crate) struct Args {
+pub struct Args {
     /// Path to the commands definition config file YAML.
     #[arg(long, short = 'c')]
     pub config_path: Option<String>,

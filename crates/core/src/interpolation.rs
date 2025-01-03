@@ -1,10 +1,8 @@
-use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
 
 use leon::Template;
 
 use crate::command_definitions::ParameterDefinition;
-use crate::command_selection;
 use crate::error::Result;
 
 pub fn build_default_lookup(
@@ -22,28 +20,6 @@ pub fn build_default_lookup(
     } else {
         None
     }
-}
-
-pub fn get_template_context(
-    tokens: &HashSet<String>,
-    defaults: &Option<HashMap<String, String>>,
-) -> Result<Option<HashMap<String, String>>> {
-    if tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let mut context: HashMap<String, String> = HashMap::new();
-    for key in tokens.iter().sorted() {
-        let default_value = match defaults {
-            Some(defaults) => defaults.get(key),
-            None => None,
-        };
-
-        let value = command_selection::prompt_value(key, default_value)?;
-
-        context.insert(key.to_string(), value);
-    }
-    Ok(Some(context))
 }
 
 /// Find all tokens in all arguments of templates of command.

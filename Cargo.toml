@@ -1,23 +1,7 @@
-[package]
-name = "rust-cuts"
-version = "0.2.0"
-edition = "2021"
-
-[[bin]]
-name = "rc"
-path = "src/main.rs"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-serde_yaml = "0.9.33"
-serde = { version = "1.0.197", features = ["derive"] }
-shellexpand = "3.1.0"
-leon = "3.0.1"
-clap = { version = "4.5.4", features = ["derive"] }
-thiserror = "1.0.59"
-env_logger = "0.11.3"
-log = "0.4.21"
-itertools = "0.13.0"
-crossterm = "0.28.1"
-fuzzy-matcher = "0.3.7"
+[workspace]
+members = [
+    "crates/core",
+    "crates/cli",
+    #"crates/gui"
+]
+resolver = "2"

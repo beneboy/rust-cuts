@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::io::{stdin, stdout, Write};
 use std::time::Duration;
@@ -12,15 +12,16 @@ use crossterm::style::Color::{DarkBlue, DarkGreen, Reset, Yellow};
 use crossterm::style::{
     Attribute, Color, Print, SetAttribute, SetBackgroundColor, SetForegroundColor,
 };
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType};
-use crossterm::{cursor, event, execute, queue, terminal, ExecutableCommand};
+use crossterm::terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode};
+use crossterm::{cursor, event, ExecutableCommand, execute, queue, terminal};
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
+use itertools::Itertools;
 
-use crate::command_definitions::{CommandDefinition, CommandExecutionTemplate};
+use rust_cuts_core::command_definitions::{ColorDefinition, CommandDefinition, CommandExecutionTemplate};
 use crate::command_selection::CommandIndex::Normal;
 use crate::command_selection::CycleDirection::{Down, Up};
-use crate::error::{Error, Result};
+use rust_cuts_core::error::{Error, Result};
 use crate::LAST_COMMAND_OPTION;
 
 pub enum CommandChoice {
@@ -43,6 +44,83 @@ struct ViewportState {
     offset: usize,
     height: u16,
     width: u16,
+}
+
+trait AsTermColor {
+    fn as_crossterm_color(&self) -> Result<Option<Color>>;
+}
+
+impl AsTermColor for ColorDefinition {
+    fn as_crossterm_color(&self) -> Result<Option<Color>> {
+        let defined_count = [self.rgb.is_some(), self.ansi.is_some(), self.name.is_some()]
+            .iter()
+            .filter(|&&x| x)
+            .count();
+
+        // Error if more than one field is defined
+        if defined_count > 1 {
+            return Err(Error::MultipleColorTypes);
+        }
+
+        // Convert to crossterm Color
+        Ok(match (self.rgb, self.ansi, &self.name) {
+            (Some((r, g, b)), None, None) => Some(Color::Rgb { r, g, b }),
+            (None, Some(ansi), None) => Some(Color::AnsiValue(ansi)),
+            (None, None, Some(name)) => Some(match name.to_lowercase().as_str() {
+                "black" => Color::Black,
+                "darkgrey" => Color::DarkGrey,
+                "red" => Color::Red,
+                "darkred" => Color::DarkRed,
+                "green" => Color::Green,
+                "darkgreen" => Color::DarkGreen,
+                "yellow" => Color::Yellow,
+                "darkyellow" => Color::DarkYellow,
+                "blue" => Color::Blue,
+                "darkblue" => Color::DarkBlue,
+                "magenta" => Color::Magenta,
+                "darkmagenta" => Color::DarkMagenta,
+                "cyan" => Color::Cyan,
+                "darkcyan" => Color::DarkCyan,
+                "white" => Color::White,
+                "grey" => Color::Grey,
+                _ => return Err(Error::UnknownColorName(name.to_string())),
+            }),
+            (None, None, None) => None,
+            _ => unreachable!(), // This case is prevented by the earlier check
+        })
+    }
+}
+
+fn color_from_metadata_attribute(
+    color_definition: &Option<ColorDefinition>,
+) -> Result<Option<Color>> {
+    match color_definition {
+        None => Ok(None),
+        Some(color_definition) => color_definition.as_crossterm_color(),
+    }
+}
+
+trait CommandDefinitionColor {
+    fn foreground_color(&self) -> Result<Option<Color>>;
+    fn background_color(&self) -> Result<Option<Color>>;
+}
+
+impl CommandDefinitionColor for CommandDefinition {
+    fn foreground_color(&self) -> Result<Option<Color>> {
+        if let Some(metadata) = &self.metadata {
+            color_from_metadata_attribute(&metadata.foreground_color)
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn background_color(&self) -> Result<Option<Color>> {
+        if let Some(metadata) = &self.metadata {
+            color_from_metadata_attribute(&metadata.background_color)
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 pub fn prompt_value(variable_name: &str, default_value: Option<&String>) -> Result<String> {
@@ -666,4 +744,26 @@ impl Drop for RawModeGuard {
         let mut stdout = stdout();
         let _ = stdout.execute(DisableMouseCapture);
     }
+}
+
+pub fn get_template_context(
+    tokens: &HashSet<String>,
+    defaults: &Option<HashMap<String, String>>,
+) -> Result<Option<HashMap<String, String>>> {
+    if tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let mut context: HashMap<String, String> = HashMap::new();
+    for key in tokens.iter().sorted() {
+        let default_value = match defaults {
+            Some(defaults) => defaults.get(key),
+            None => None,
+        };
+
+        let value = prompt_value(key, default_value)?;
+
+        context.insert(key.to_string(), value);
+    }
+    Ok(Some(context))
 }
