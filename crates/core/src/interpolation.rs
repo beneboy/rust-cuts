@@ -5,18 +5,16 @@ use leon::Template;
 use crate::command_definitions::ParameterDefinition;
 use crate::error::Result;
 
-pub fn build_default_lookup(
+pub fn build_parameter_lookup(
     definitions: &Option<Vec<ParameterDefinition>>,
-) -> Option<HashMap<String, String>> {
+) -> Option<HashMap<String, ParameterDefinition>> {
     if let Some(definitions) = definitions.as_ref() {
-        let mut defaults: HashMap<String, String> = HashMap::new();
+        let mut parameter_definitions: HashMap<String, ParameterDefinition> = HashMap::new();
         for definition in definitions {
-            if let Some(default) = &definition.default {
-                defaults.insert(definition.name.clone(), default.clone());
-            }
+            parameter_definitions.insert(definition.id.clone(), definition.clone());
         }
 
-        Some(defaults)
+        Some(parameter_definitions)
     } else {
         None
     }
@@ -46,14 +44,10 @@ pub fn get_templates(command: &[String]) -> Result<Vec<Template>> {
 }
 
 pub fn interpolate_command(
-    context: &Option<HashMap<String, String>>,
+    context: &HashMap<String, String>,
     templates: &[Template],
 ) -> Result<Vec<String>> {
     let mut interpolated_arguments: Vec<String> = Vec::new();
-
-    let empty_hashmap: HashMap<String, String> = HashMap::new();
-
-    let context = context.as_ref().unwrap_or(&empty_hashmap);
 
     for template in templates {
         interpolated_arguments.push(template.render(&context)?);

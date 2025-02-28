@@ -250,3 +250,8 @@ They are case-insensitive.
 - `DarkCyan`
 - `White`
 - `Grey`
+
+# Running Subprojects
+
+GUI: cargo run -p rust-cuts-gui
+CLI: cargo run -p rust-cuts-cli

@@ -10,9 +10,9 @@ use itertools::Itertools;
 use log::{debug, info, warn};
 
 use command_selection::CommandChoice::{Index, Quit, Rerun};
-use command_selection::get_template_context;
+use command_selection::fill_parameter_values;
 use rust_cuts_core::{config, file_handling, interpolation};
-use rust_cuts_core::command_definitions::{CommandDefinition, CommandExecutionTemplate};
+use rust_cuts_core::command_definitions::{CommandDefinition, CommandExecutionTemplate, ParameterDefinition};
 use rust_cuts_core::config::DEFAULT_SHELL;
 use rust_cuts_core::error::{Error, Result};
 use rust_cuts_core::execution;
@@ -35,7 +35,7 @@ const LAST_COMMAND_OPTION: char = 'r';
 /// some parameters removed.
 fn get_should_prompt_for_parameters(
     tokens: &HashSet<String>,
-    provided_defaults: &Option<HashMap<String, String>>,
+    parameter_definitions: &Option<HashMap<String, ParameterDefinition>>,
     is_rerun: bool,
 ) -> bool {
     if tokens.is_empty() {
@@ -47,7 +47,7 @@ fn get_should_prompt_for_parameters(
         return true;
     }
 
-    match provided_defaults.as_ref() {
+    match parameter_definitions.as_ref() {
         Some(provided_defaults) => {
             // If any of the tokens don't exist in the provided defaults,
             // then we should prompt.
@@ -106,17 +106,18 @@ fn execute() -> Result<()> {
     };
 
     let mut execution_context: CommandExecutionTemplate;
-    let defaults: Option<HashMap<String, String>>;
+    let parameter_definitions: Option<HashMap<String, ParameterDefinition>>;
+
 
     match selected_option {
         Index(selected_index) => {
             let selected_command = &parsed_command_defs[selected_index];
-            defaults = interpolation::build_default_lookup(&selected_command.parameters);
+            parameter_definitions = interpolation::build_parameter_lookup(&selected_command.parameters);
             execution_context = CommandExecutionTemplate::from_command_definition(selected_command);
         }
         Rerun(last_command) => {
             execution_context = last_command.clone();
-            defaults = last_command.template_context.clone();
+            parameter_definitions = last_command.template_context.clone();
         }
         Quit => {
             let mut stdout = stdout();
@@ -132,26 +133,33 @@ fn execute() -> Result<()> {
     let mut args_as_string: String;
 
     let mut should_prompt_for_parameters =
-        get_should_prompt_for_parameters(&tokens, &defaults, last_command.is_some());
+        get_should_prompt_for_parameters(&tokens, &parameter_definitions, last_command.is_some());
 
-    let mut template_context = None;
+    let mut filled_parameters = None;
 
     loop {
         if tokens.is_empty() {
-            template_context = None;
+            filled_parameters = None;
         } else if should_prompt_for_parameters {
             // On first loop, the defaults should be the normal defaults
             // Once template_context is set, that should be used as the default
-            template_context = get_template_context(
+            filled_parameters = fill_parameter_values(
                 &tokens,
-                if template_context.is_none() {
-                    &defaults
-                } else {
-                    &template_context
-                },
+                &parameter_definitions,
+                &filled_parameters
             )?;
         } else {
-            template_context.clone_from(&defaults);
+            filled_parameters = parameter_definitions.clone()
+        };
+
+        let template_context: HashMap<String, String> = match &filled_parameters {
+            Some(param_defs) => param_defs
+                .iter()
+                .filter_map(|(name, param_def)| {
+                    param_def.default.as_ref().map(|default| (name.clone(), default.clone()))
+                })
+                .collect(),
+            None => HashMap::new(),
         };
 
         args_as_string = interpolate_command(&template_context, &templates)?.join(" ");
@@ -169,9 +177,7 @@ fn execute() -> Result<()> {
         match command_selection::confirm_command_should_run(!tokens.is_empty())? {
             RunChoice::Yes => {
                 // Break loop, do run
-                execution_context
-                    .template_context
-                    .clone_from(&template_context);
+                execution_context.template_context = filled_parameters;
                 break;
             }
             RunChoice::No => {

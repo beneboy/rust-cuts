@@ -12,17 +12,19 @@ use crossterm::style::Color::{DarkBlue, DarkGreen, Reset, Yellow};
 use crossterm::style::{
     Attribute, Color, Print, SetAttribute, SetBackgroundColor, SetForegroundColor,
 };
-use crossterm::terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode};
-use crossterm::{cursor, event, ExecutableCommand, execute, queue, terminal};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType};
+use crossterm::{cursor, event, execute, queue, terminal, ExecutableCommand};
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
 use itertools::Itertools;
 
-use rust_cuts_core::command_definitions::{ColorDefinition, CommandDefinition, CommandExecutionTemplate};
 use crate::command_selection::CommandIndex::Normal;
 use crate::command_selection::CycleDirection::{Down, Up};
-use rust_cuts_core::error::{Error, Result};
 use crate::LAST_COMMAND_OPTION;
+use rust_cuts_core::command_definitions::{
+    ColorDefinition, CommandDefinition, CommandExecutionTemplate, ParameterDefinition,
+};
+use rust_cuts_core::error::{Error, Result};
 
 pub enum CommandChoice {
     Index(usize),
@@ -123,30 +125,51 @@ impl CommandDefinitionColor for CommandDefinition {
     }
 }
 
-pub fn prompt_value(variable_name: &str, default_value: Option<&String>) -> Result<String> {
+pub fn prompt_value(
+    variable_name: &str,
+    parameter_definition: Option<&ParameterDefinition>,
+    previous_default: Option<String>,
+) -> Result<String> {
     loop {
-        if default_value.is_some() {
-            print!(
-                "Please give value for `{variable_name}` [{}]: ",
-                default_value.as_ref().unwrap()
-            );
+        // Determine what to display in the prompt
+        let display_default = previous_default
+            .as_ref()
+            .or_else(|| parameter_definition.and_then(|def| def.default.as_ref()));
+
+        let prompt_base = if let Some(param_def) = parameter_definition {
+            format!("Value for {}", param_def)
         } else {
-            print!("Please give value for `{variable_name}`: ");
+            format!("Value for `{variable_name}`")
+        };
+
+        if let Some(default) = &display_default {
+            print!("{} [{}]: ", prompt_base, default);
+        } else {
+            print!("{}: ", prompt_base);
         }
+
         stdout().flush()?;
 
+        // Read user input
         let mut input = String::new();
         stdin().read_line(&mut input)?;
-
         let read_value = input.trim().to_string();
 
+        // Return user input if not empty, otherwise return default
         if !read_value.is_empty() {
             return Ok(read_value);
         }
 
-        if let Some(default_value) = default_value {
-            return Ok((*default_value).to_string());
+        // Return the previous_default or parameter default if available
+        if let Some(default) = previous_default {
+            return Ok(default);
+        } else if let Some(param_def) = parameter_definition {
+            if let Some(default) = &param_def.default {
+                return Ok(default.clone());
+            }
         }
+
+        // No input and no default - loop again
     }
 }
 
@@ -190,13 +213,17 @@ enum CommandIndex {
 impl Display for CommandIndex {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            CommandIndex::Normal(i) => f.write_str(format!("{}", i+1).as_str()),
+            CommandIndex::Normal(i) => f.write_str(format!("{}", i + 1).as_str()),
             CommandIndex::Rerun => f.write_str("r"),
         }
     }
 }
 
-fn print_header(header_mode: &DisplayMode, selected_index: usize, command_display_count: usize) -> Result<()> {
+fn print_header(
+    header_mode: &DisplayMode,
+    selected_index: usize,
+    command_display_count: usize,
+) -> Result<()> {
     let mut stdout = stdout();
     let (width, _) = terminal::size()?;
 
@@ -207,7 +234,11 @@ fn print_header(header_mode: &DisplayMode, selected_index: usize, command_displa
     let instructions = if header_mode.is_filtering {
         "<esc>: Stop Filtering".to_string()
     } else {
-        format!("/: Begin Filtering   |   {}/{}   |   q: Quit", pad_to_width_of(selected_index + 1, command_display_count), command_display_count)
+        format!(
+            "/: Begin Filtering   |   {}/{}   |   q: Quit",
+            pad_to_width_of(selected_index + 1, command_display_count),
+            command_display_count
+        )
     };
 
     let right_padding = " ".repeat(width as usize - left_padding_size - instructions.len());
@@ -312,7 +343,8 @@ fn print_commands_with_selection(
 ) -> Result<()> {
     let mut stdout = stdout();
 
-    let visible_commands = indexes_to_display.iter()
+    let visible_commands = indexes_to_display
+        .iter()
         .skip(viewport.offset)
         .take(viewport.height as usize);
 
@@ -489,8 +521,12 @@ pub fn prompt_for_command_choice(
             if indexes_before == indexes_to_display {
                 selected_index = typed_index.parse::<usize>().unwrap_or(0);
             } else {
-                (selected_index, _) =
-                    move_selected_index(selected_index, &mut viewport, indexes_to_display.len(), None);
+                (selected_index, _) = move_selected_index(
+                    selected_index,
+                    &mut viewport,
+                    indexes_to_display.len(),
+                    None,
+                );
                 typed_index = selected_index.to_string();
             }
 
@@ -511,7 +547,7 @@ pub fn prompt_for_command_choice(
                     &command_display,
                     &indexes_to_display,
                     selected_index,
-                    &viewport
+                    &viewport,
                 )?;
             }
 
@@ -546,7 +582,8 @@ pub fn prompt_for_command_choice(
                             MouseEventKind::Up(button) => {
                                 if button == MouseButton::Left {
                                     if let Some(down_row) = down_row {
-                                        let clicked_index = (down_row - 1) as usize + viewport.offset;
+                                        let clicked_index =
+                                            (down_row - 1) as usize + viewport.offset;
 
                                         if clicked_index < indexes_to_display.len() {
                                             clear_and_write_command_row(
@@ -667,13 +704,18 @@ pub fn prompt_for_command_choice(
                     match new_height.cmp(&viewport.height) {
                         Ordering::Greater if viewport.offset > 0 => {
                             let height_increase = new_height - viewport.height;
-                            viewport.offset = viewport.offset.saturating_sub(height_increase as usize);
+                            viewport.offset =
+                                viewport.offset.saturating_sub(height_increase as usize);
                         }
-                        Ordering::Less if selected_index >= viewport.offset + new_height as usize => {
-                            viewport.offset = selected_index.saturating_sub(new_height as usize - 1);
+                        Ordering::Less
+                            if selected_index >= viewport.offset + new_height as usize =>
+                        {
+                            viewport.offset =
+                                selected_index.saturating_sub(new_height as usize - 1);
 
                             if viewport.offset + new_height as usize > indexes_to_display.len() {
-                                viewport.offset = indexes_to_display.len().saturating_sub(new_height as usize);
+                                viewport.offset =
+                                    indexes_to_display.len().saturating_sub(new_height as usize);
                             }
                         }
                         _ => {}
@@ -690,8 +732,12 @@ pub fn prompt_for_command_choice(
             match index_change_direction {
                 None => {}
                 Some(d) => {
-                    let (new_index, viewport_changed) =
-                        move_selected_index(selected_index, &mut viewport, indexes_to_display.len(), Some(&d));
+                    let (new_index, viewport_changed) = move_selected_index(
+                        selected_index,
+                        &mut viewport,
+                        indexes_to_display.len(),
+                        Some(&d),
+                    );
 
                     if viewport_changed {
                         should_reprint = true;
@@ -703,8 +749,11 @@ pub fn prompt_for_command_choice(
                         let new_row = (new_index - viewport.offset) as u16 + 1;
 
                         // Only try to update individual rows if they're both visible
-                        if old_row > 0 && old_row <= viewport.height
-                            && new_row > 0 && new_row <= viewport.height {
+                        if old_row > 0
+                            && old_row <= viewport.height
+                            && new_row > 0
+                            && new_row <= viewport.height
+                        {
                             clear_and_write_command_row(
                                 old_row,
                                 &command_display,
@@ -746,24 +795,70 @@ impl Drop for RawModeGuard {
     }
 }
 
-pub fn get_template_context(
+pub fn fill_parameter_values(
     tokens: &HashSet<String>,
-    defaults: &Option<HashMap<String, String>>,
-) -> Result<Option<HashMap<String, String>>> {
+    parameter_definitions: &Option<HashMap<String, ParameterDefinition>>,
+    existing_context: &Option<HashMap<String, ParameterDefinition>>,
+) -> Result<Option<HashMap<String, ParameterDefinition>>> {
     if tokens.is_empty() {
         return Ok(None);
     }
 
-    let mut context: HashMap<String, String> = HashMap::new();
+    let mut context: HashMap<String, ParameterDefinition> = HashMap::new();
     for key in tokens.iter().sorted() {
-        let default_value = match defaults {
-            Some(defaults) => defaults.get(key),
-            None => None,
-        };
+        // Get the previous context value if available
+        let previous_context_param = existing_context
+            .as_ref()
+            .and_then(|ctx| ctx.get(key))
+            .cloned();
 
-        let value = prompt_value(key, default_value)?;
+        // Get the parameter definition if available
+        let param_definition = parameter_definitions
+            .as_ref()
+            .and_then(|defs| defs.get(key))
+            .cloned();
 
-        context.insert(key.to_string(), value);
+        // Determine the default value to display in the prompt
+        let previous_default = previous_context_param
+            .as_ref()
+            .and_then(|param| param.default.clone())
+            .or_else(|| param_definition.as_ref().and_then(|def| def.default.clone()));
+
+        // Choose which parameter definition to display in the prompt
+        let display_param = previous_context_param.as_ref().or(param_definition.as_ref());
+
+        let prompted_value = prompt_value(key, display_param, previous_default)?;
+
+        // Create or update the parameter definition
+        let new_param = create_or_update_parameter(key, prompted_value, previous_context_param, param_definition);
+
+        context.insert(key.clone(), new_param);
     }
+
     Ok(Some(context))
+}
+
+fn create_or_update_parameter(
+    key: &str,
+    value: String,
+    previous_context_param: Option<ParameterDefinition>,
+    parameter_definition: Option<ParameterDefinition>,
+) -> ParameterDefinition {
+    if let Some(mut param) = previous_context_param {
+        // Use existing parameter, just update the default
+        param.default = Some(value);
+        param
+    } else if let Some(mut def) = parameter_definition {
+        // Use parameter definition from the command, update default
+        // (this won't save back to original commands YAML)
+        def.default = Some(value);
+        def
+    } else {
+        // Both empty, create a new parameter definition
+        ParameterDefinition {
+            id: key.to_string(),
+            default: Some(value),
+            description: None,
+        }
+    }
 }
