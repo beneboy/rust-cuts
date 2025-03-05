@@ -1,7 +1,8 @@
-use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
-
+use crate::error::Result;
+use leon::{Item, Template};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Display, Formatter};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ParameterDefinition {
@@ -48,6 +49,57 @@ pub struct CommandDefinition {
     pub metadata: Option<CommandMetadata>,
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct CommandExecutionTemplate {
+    pub command: Vec<String>,
+    pub working_directory: Option<String>,
+    pub template_context: Option<HashMap<String, ParameterDefinition>>,
+    pub environment: Option<HashMap<String, String>>,
+}
+
+pub trait TemplateParser {
+    fn get_command_templates(&self) -> &[String];
+
+    fn get_templates(&self) -> Result<Vec<Template>> {
+        let mut templates = Vec::new();
+
+        for cmd in self.get_command_templates() {
+            let template = Template::parse(cmd)?;
+            templates.push(template);
+        }
+        Ok(templates)
+    }
+
+    fn get_context_variables(&self) -> Result<HashSet<String>> {
+        let mut variables: HashSet<String> = HashSet::new();
+        for template in self.get_templates()?.iter() {
+            for item in template.items.iter() {
+                match item {
+                    Item::Text(_) => {
+                        // normal text, do nothing
+                    }
+                    Item::Key(k) => {
+                        variables.insert(k.to_string());
+                    }
+                }
+            }
+        }
+        Ok(variables)
+    }
+}
+
+impl TemplateParser for CommandDefinition {
+    fn get_command_templates(&self) -> &[String] {
+        &self.command
+    }
+}
+
+impl TemplateParser for CommandExecutionTemplate {
+    fn get_command_templates(&self) -> &[String] {
+        &self.command
+    }
+}
+
 impl Display for CommandDefinition {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match (&self.id, &self.description) {
@@ -72,13 +124,6 @@ impl Display for CommandDefinition {
 }
 
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct CommandExecutionTemplate {
-    pub command: Vec<String>,
-    pub working_directory: Option<String>,
-    pub template_context: Option<HashMap<String, ParameterDefinition>>,
-    pub environment: Option<HashMap<String, String>>,
-}
 
 impl CommandExecutionTemplate {
     pub fn from_command_definition(value: &CommandDefinition) -> Self {
@@ -90,7 +135,6 @@ impl CommandExecutionTemplate {
         }
     }
 }
-
 
 impl Display for CommandExecutionTemplate {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {

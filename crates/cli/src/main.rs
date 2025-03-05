@@ -12,14 +12,14 @@ use log::{debug, info, warn};
 use command_selection::CommandChoice::{Index, Quit, Rerun};
 use command_selection::fill_parameter_values;
 use rust_cuts_core::{config, file_handling, interpolation};
-use rust_cuts_core::command_definitions::{CommandDefinition, CommandExecutionTemplate, ParameterDefinition};
+use rust_cuts_core::command_definitions::{CommandDefinition, CommandExecutionTemplate, ParameterDefinition, TemplateParser};
 use rust_cuts_core::config::DEFAULT_SHELL;
 use rust_cuts_core::error::{Error, Result};
 use rust_cuts_core::execution;
 
 use crate::cli_args::Args;
 use crate::command_selection::{CommandChoice, RunChoice};
-use rust_cuts_core::interpolation::{get_templates, get_tokens, interpolate_command};
+use rust_cuts_core::interpolation::{interpolate_command};
 
 pub mod command_selection;
 mod cli_args;
@@ -126,14 +126,14 @@ fn execute() -> Result<()> {
         }
     }
 
-    let templates = get_templates(&execution_context.command)?;
+    let templates = &execution_context.get_templates()?;
 
-    let tokens = get_tokens(&templates);
+    let tokens = &execution_context.get_context_variables()?;
 
     let mut args_as_string: String;
 
     let mut should_prompt_for_parameters =
-        get_should_prompt_for_parameters(&tokens, &parameter_definitions, last_command.is_some());
+        get_should_prompt_for_parameters(tokens, &parameter_definitions, last_command.is_some());
 
     let mut filled_parameters = None;
 
@@ -144,7 +144,7 @@ fn execute() -> Result<()> {
             // On first loop, the defaults should be the normal defaults
             // Once template_context is set, that should be used as the default
             filled_parameters = fill_parameter_values(
-                &tokens,
+                tokens,
                 &parameter_definitions,
                 &filled_parameters
             )?;
@@ -162,7 +162,7 @@ fn execute() -> Result<()> {
             None => HashMap::new(),
         };
 
-        args_as_string = interpolate_command(&template_context, &templates)?.join(" ");
+        args_as_string = interpolate_command(&template_context, templates)?.join(" ");
 
         print_command_and_environment(&execution_context, &args_as_string);
         if args.dry_run {

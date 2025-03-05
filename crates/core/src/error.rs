@@ -50,6 +50,24 @@ pub enum Error {
 
     #[error("STDIO error: {}", .0)]
     Stdio(std::io::Error),
+
+    #[error("Found a non-unique command ID: `{}`", .0)]
+    NonUniqueCommandId(String),
+
+    #[error("Found a non-unique parameter ID on command {}: `{}`", .0, .1)]
+    NonUniqueParameterId(String, String),
+
+    #[error("Found a parameter with ID that is not present in command {}: `{}`", .0, .1)]
+    NotFoundParameterId(String, String),
+
+    #[error("Invalid ID: ID may not be empty")]
+    EmptyId,
+
+    #[error("Invalid ID `{}`: ID may not contain spaces", .0)]
+    IdWithSpace(String),
+
+    #[error("Invalid ID `{}`: ID may not contain a colon (reserved for future use)", .0)]
+    IdWithColon(String),
 }
 
 impl Error {
