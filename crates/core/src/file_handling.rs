@@ -4,7 +4,7 @@ use std::path::Path;
 
 use crate::command_definitions::{CommandDefinition, CommandExecutionTemplate, ParameterDefinition, TemplateParser};
 use crate::error::{Error, Result};
-use crate::error::Error::{EmptyId, IdWithColon, IdWithSpace, NonUniqueCommandId, NonUniqueParameterId, NotFoundParameterId};
+use crate::error::Error::{EmptyId, IdWithColon, IdWithSpace, NonUniqueCommandId, NonUniqueParameterId, NotFoundParameterId, NumericId};
 
 fn get_reader(file_description: &str, path: &str) -> Result<File> {
     match File::open(path) {
@@ -81,6 +81,10 @@ fn validate_id(id: &str) -> Result<()> {
 
     if id.contains(':') {
         return Err(IdWithColon(id.to_string()));
+    }
+
+    if id.chars().all(|c| c.is_numeric()) {
+        return Err(NumericId(id.to_string()));
     }
 
     Ok(())

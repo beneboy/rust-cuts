@@ -68,6 +68,9 @@ pub enum Error {
 
     #[error("Invalid ID `{}`: ID may not contain a colon (reserved for future use)", .0)]
     IdWithColon(String),
+
+    #[error("Invalid ID `{}`: ID cannot be purely numeric", .0)]
+    NumericId(String),
 }
 
 impl Error {
