@@ -1,68 +1,86 @@
 use clap::Parser;
-use crossterm::terminal::{disable_raw_mode, Clear, ClearType};
-use crossterm::{cursor, queue, terminal};
-use itertools::Itertools;
-use log::{debug, info, warn};
-use std::collections::{HashMap, HashSet};
-use std::env;
-use std::io::{stdout, Write};
-use std::process::{Command, ExitCode};
-
 use command_selection::fill_parameter_values;
 use command_selection::CommandChoice::{Index, Quit, Rerun};
+use crossterm::terminal::{disable_raw_mode, Clear, ClearType};
+use crossterm::{cursor, queue, terminal};
+use indexmap::IndexSet;
+use itertools::Itertools;
+use log::{debug, info, warn};
 use rust_cuts_core::command_definitions::{
     CommandDefinition, CommandExecutionTemplate, ParameterDefinition, TemplateParser,
 };
 use rust_cuts_core::config::DEFAULT_SHELL;
-use rust_cuts_core::error::Error::EmptyId;
+use rust_cuts_core::error::Error::CommandNotFound;
 use rust_cuts_core::error::{Error, Result};
 use rust_cuts_core::execution;
 use rust_cuts_core::{config, file_handling, interpolation};
+use std::collections::HashMap;
+use std::env;
+use std::io::{stdout, Write};
+use std::process::{Command, ExitCode};
 
-use crate::cli_args::Args;
+use crate::parameter_processing::process_command_line_parameters;
+use crate::cli_args::{Args, ParameterMode};
 use crate::command_selection::CommandChoice::CommandId;
 use crate::command_selection::{CommandChoice, RunChoice};
 use rust_cuts_core::interpolation::interpolate_command;
 
+mod parameter_processing;
 mod cli_args;
 pub mod command_selection;
 
 const LAST_COMMAND_OPTION: char = 'r';
 
-/// Parameters should not be prompted for if:
-/// 1. There are no tokens to interpolate!
-/// 2. A command is being re-run, and all parameters were provided previously.*
+/// Determines whether to prompt the user for parameter values.
 ///
-/// *: A re-run is based on the previous definition of the command, therefore the only way the
-/// command would not have all the parameters is if the last command YAML file was edited and had
-/// some parameters removed.
-fn get_should_prompt_for_parameters(
-    tokens: &HashSet<String>,
+/// The function avoids prompting when:
+/// 1. The command template contains no tokens to interpolate
+/// 2. The user reruns a command with all parameters already provided
+/// 3. The user supplies all needed parameters via command-line (named or positional)
+///
+/// The function prompts when:
+/// 1. The user runs a new command without providing command-line parameters
+/// 2. Command-line parameters don't cover all required tokens
+/// 3. The user reruns a command that requires parameters not present in the previous execution
+///
+/// For reruns, parameter requirements may change if someone modified the command definition
+/// since the last execution (e.g., added new parameters or edited the YAML file).
+fn should_prompt_for_parameters(
+    tokens: &IndexSet<String>,
     parameter_definitions: &Option<HashMap<String, ParameterDefinition>>,
+    filled_parameters: &Option<HashMap<String, ParameterDefinition>>,
     is_rerun: bool,
+    parameter_mode: ParameterMode,
 ) -> bool {
+    // No need to prompt if no tokens to fill
     if tokens.is_empty() {
-        // If no tokens, then there should be no parameters and shouldn't be prompted
         return false;
     }
 
-    if !is_rerun {
+    // Always prompt if not a rerun (unless using command-line params)
+    if !is_rerun && parameter_mode == ParameterMode::None {
         return true;
     }
 
-    match parameter_definitions.as_ref() {
-        Some(provided_defaults) => {
-            // If any of the tokens don't exist in the provided defaults,
-            // then we should prompt.
-            tokens
-                .iter()
-                .any(|token| !provided_defaults.contains_key(token))
-        }
-        None => {
-            // Provided defaults is none, we should prompt
-            true
+    // If using command-line parameters (Named or Positional), check if any are missing
+    if parameter_mode != ParameterMode::None {
+        if let Some(params) = filled_parameters {
+            return tokens.iter().any(|token| {
+                match params.get(token) {
+                    Some(param) => param.default.is_none(),
+                    None => true, // Token has no parameter definition
+                }
+            });
         }
     }
+
+    // For reruns, check if all tokens have parameter definitions
+    if let Some(params) = parameter_definitions {
+        return tokens.iter().any(|token| !params.contains_key(token));
+    }
+
+    // Default: prompt is needed
+    true
 }
 
 fn get_rerun_request_is_valid(args: &Args) -> Result<bool> {
@@ -127,7 +145,7 @@ fn execute() -> Result<()> {
                     }
                     false
                 })
-                .ok_or(EmptyId)?;
+                .ok_or(CommandNotFound(command_id))?;
             parameter_definitions =
                 interpolation::build_parameter_lookup(&selected_command.parameters);
             execution_context = CommandExecutionTemplate::from_command_definition(selected_command);
@@ -145,27 +163,40 @@ fn execute() -> Result<()> {
 
     let templates = &execution_context.get_templates()?;
 
-    let tokens = &execution_context.get_context_variables()?;
+    let tokens = &execution_context.get_ordered_context_variables()?;
 
     let mut args_as_string: String;
 
-    let mut should_prompt_for_parameters =
-        get_should_prompt_for_parameters(tokens, &parameter_definitions, last_command.is_some());
+    // Process command-line parameters first
+    let mut filled_parameters = if !tokens.is_empty() {
+        process_command_line_parameters(args.get_parameter_mode()?, &execution_context, &parameter_definitions)?
+    } else {
+        None
+    };
 
-    let mut filled_parameters = None;
+    // Initial prompt check
+    let mut need_to_prompt = should_prompt_for_parameters(
+        tokens,
+        &parameter_definitions,
+        &filled_parameters,
+        last_command.is_some(),
+        args.get_parameter_mode()?,
+    );
 
     loop {
+        // Handle parameters based on our current state
         if tokens.is_empty() {
+            // No tokens, no parameters needed
             filled_parameters = None;
-        } else if should_prompt_for_parameters {
-            // On first loop, the defaults should be the normal defaults
-            // Once template_context is set, that should be used as the default
+        } else if need_to_prompt {
+            // Prompt the user for parameter values
             filled_parameters =
                 fill_parameter_values(tokens, &parameter_definitions, &filled_parameters)?;
-        } else {
-            filled_parameters = parameter_definitions.clone()
-        };
+            // After prompting, we don't need to prompt again unless user chooses to change params
+        }
+        // Don't overwrite parameters if we already have them and don't need to prompt
 
+        // Build template context from parameters
         let template_context: HashMap<String, String> = match &filled_parameters {
             Some(param_defs) => param_defs
                 .iter()
@@ -203,7 +234,7 @@ fn execute() -> Result<()> {
             }
             RunChoice::ChangeParams => {
                 // Continue the loop, params are re-requested if missing_defaults becomes true
-                should_prompt_for_parameters = true;
+                need_to_prompt = true;
             }
         }
     }

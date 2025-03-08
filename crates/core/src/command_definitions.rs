@@ -1,7 +1,8 @@
 use crate::error::Result;
+use indexmap::IndexSet;
 use leon::{Item, Template};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -70,8 +71,8 @@ pub trait TemplateParser {
         Ok(templates)
     }
 
-    fn get_context_variables(&self) -> Result<HashSet<String>> {
-        let mut variables: HashSet<String> = HashSet::new();
+    fn get_ordered_context_variables(&self) -> Result<IndexSet<String>> {
+        let mut variables: IndexSet<String> = IndexSet::new();
         for template in self.get_templates()?.iter() {
             for item in template.items.iter() {
                 match item {
@@ -79,6 +80,7 @@ pub trait TemplateParser {
                         // normal text, do nothing
                     }
                     Item::Key(k) => {
+                        // IndexSet keeps order, but won't insert if the value exists
                         variables.insert(k.to_string());
                     }
                 }

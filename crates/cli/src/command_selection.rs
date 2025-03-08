@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::io::{stdin, stdout, Write};
 use std::time::Duration;
@@ -16,6 +16,7 @@ use crossterm::terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType};
 use crossterm::{cursor, event, execute, queue, terminal, ExecutableCommand};
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
+use indexmap::IndexSet;
 use itertools::Itertools;
 
 use crate::command_selection::CommandIndex::Normal;
@@ -797,7 +798,7 @@ impl Drop for RawModeGuard {
 }
 
 pub fn fill_parameter_values(
-    tokens: &HashSet<String>,
+    tokens: &IndexSet<String>,
     parameter_definitions: &Option<HashMap<String, ParameterDefinition>>,
     existing_context: &Option<HashMap<String, ParameterDefinition>>,
 ) -> Result<Option<HashMap<String, ParameterDefinition>>> {

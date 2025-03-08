@@ -101,7 +101,7 @@ fn validate_parameters(command: &CommandDefinition, parameters: &[ParameterDefin
         }
     }
 
-    let command_variables = command.get_context_variables()?;
+    let command_variables = command.get_ordered_context_variables()?;
 
     for id in ids.iter() {
         if !command_variables.contains(id) {
