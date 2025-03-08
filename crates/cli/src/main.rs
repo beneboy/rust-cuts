@@ -1,28 +1,31 @@
+use clap::Parser;
+use crossterm::terminal::{disable_raw_mode, Clear, ClearType};
+use crossterm::{cursor, queue, terminal};
+use itertools::Itertools;
+use log::{debug, info, warn};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::io::{stdout, Write};
 use std::process::{Command, ExitCode};
 
-use clap::Parser;
-use crossterm::{cursor, queue, terminal};
-use crossterm::terminal::{Clear, ClearType, disable_raw_mode};
-use itertools::Itertools;
-use log::{debug, info, warn};
-
-use command_selection::CommandChoice::{Index, Quit, Rerun};
 use command_selection::fill_parameter_values;
-use rust_cuts_core::{config, file_handling, interpolation};
-use rust_cuts_core::command_definitions::{CommandDefinition, CommandExecutionTemplate, ParameterDefinition, TemplateParser};
+use command_selection::CommandChoice::{Index, Quit, Rerun};
+use rust_cuts_core::command_definitions::{
+    CommandDefinition, CommandExecutionTemplate, ParameterDefinition, TemplateParser,
+};
 use rust_cuts_core::config::DEFAULT_SHELL;
+use rust_cuts_core::error::Error::EmptyId;
 use rust_cuts_core::error::{Error, Result};
 use rust_cuts_core::execution;
+use rust_cuts_core::{config, file_handling, interpolation};
 
 use crate::cli_args::Args;
+use crate::command_selection::CommandChoice::CommandId;
 use crate::command_selection::{CommandChoice, RunChoice};
-use rust_cuts_core::interpolation::{interpolate_command};
+use rust_cuts_core::interpolation::interpolate_command;
 
-pub mod command_selection;
 mod cli_args;
+pub mod command_selection;
 
 const LAST_COMMAND_OPTION: char = 'r';
 
@@ -67,7 +70,7 @@ fn get_rerun_request_is_valid(args: &Args) -> Result<bool> {
         return Ok(false);
     }
 
-    if args.command_index.is_some() {
+    if args.command_id_or_index.is_some() {
         // Can't rerun if an index is specified, doesn't make sense
         return Err(Error::RerunWithIndex);
     }
@@ -108,11 +111,25 @@ fn execute() -> Result<()> {
     let mut execution_context: CommandExecutionTemplate;
     let parameter_definitions: Option<HashMap<String, ParameterDefinition>>;
 
-
     match selected_option {
         Index(selected_index) => {
             let selected_command = &parsed_command_defs[selected_index];
-            parameter_definitions = interpolation::build_parameter_lookup(&selected_command.parameters);
+            parameter_definitions =
+                interpolation::build_parameter_lookup(&selected_command.parameters);
+            execution_context = CommandExecutionTemplate::from_command_definition(selected_command);
+        }
+        CommandId(command_id) => {
+            let selected_command = parsed_command_defs
+                .iter()
+                .find(|cmd| {
+                    if let Some(id) = &cmd.id {
+                        return *id == command_id;
+                    }
+                    false
+                })
+                .ok_or(EmptyId)?;
+            parameter_definitions =
+                interpolation::build_parameter_lookup(&selected_command.parameters);
             execution_context = CommandExecutionTemplate::from_command_definition(selected_command);
         }
         Rerun(last_command) => {
@@ -143,11 +160,8 @@ fn execute() -> Result<()> {
         } else if should_prompt_for_parameters {
             // On first loop, the defaults should be the normal defaults
             // Once template_context is set, that should be used as the default
-            filled_parameters = fill_parameter_values(
-                tokens,
-                &parameter_definitions,
-                &filled_parameters
-            )?;
+            filled_parameters =
+                fill_parameter_values(tokens, &parameter_definitions, &filled_parameters)?;
         } else {
             filled_parameters = parameter_definitions.clone()
         };
@@ -156,7 +170,10 @@ fn execute() -> Result<()> {
             Some(param_defs) => param_defs
                 .iter()
                 .filter_map(|(name, param_def)| {
-                    param_def.default.as_ref().map(|default| (name.clone(), default.clone()))
+                    param_def
+                        .default
+                        .as_ref()
+                        .map(|default| (name.clone(), default.clone()))
                 })
                 .collect(),
             None => HashMap::new(),
@@ -192,7 +209,9 @@ fn execute() -> Result<()> {
     }
 
     let mut command = Command::new(shell);
-    if let Some(working_directory) = config::expand_working_directory(&execution_context.working_directory) {
+    if let Some(working_directory) =
+        config::expand_working_directory(&execution_context.working_directory)
+    {
         command.current_dir(working_directory);
     }
 
@@ -214,12 +233,16 @@ fn get_selected_option(
     parsed_command_defs: &[CommandDefinition],
     last_command: Option<&CommandExecutionTemplate>,
 ) -> Result<CommandChoice> {
-    if let Some(index) = args.command_index {
-        if index >= parsed_command_defs.len() {
-            return Err(Error::Misc(format!("Command index out of range: {index}!")));
-        }
+    if let Some(command_id_or_index) = &args.command_id_or_index {
+        if let Ok(index) = command_id_or_index.parse::<usize>() {
+            if index >= parsed_command_defs.len() {
+                return Err(Error::Misc(format!("Command index out of range: {index}!")));
+            }
 
-        Ok(Index(index))
+            Ok(Index(index))
+        } else {
+            Ok(CommandId(command_id_or_index.clone()))
+        }
     } else {
         let selected_option =
             command_selection::prompt_for_command_choice(parsed_command_defs, last_command)?;

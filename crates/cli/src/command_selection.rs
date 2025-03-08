@@ -28,6 +28,7 @@ use rust_cuts_core::error::{Error, Result};
 
 pub enum CommandChoice {
     Index(usize),
+    CommandId(String),
     Rerun(CommandExecutionTemplate),
     Quit,
 }

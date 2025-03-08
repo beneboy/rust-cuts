@@ -28,6 +28,15 @@ pub struct Args {
     #[arg(long, short = 's', action)]
     pub skip_command_save: bool,
 
+    /// The command ID to execute directly (if not provided, interactive mode is used)
     #[arg(num_args(1))]
-    pub command_index: Option<usize>,
+    pub command_id_or_index: Option<String>,
+
+    /// Parameters for the command in the format key=value
+    #[arg(long = "param", short = 'p', action = clap::ArgAction::Append)]
+    pub parameters: Vec<String>,
+
+    /// Positional parameters for substitution in the command template
+    #[arg(trailing_var_arg = true)]
+    pub positional_args: Vec<String>,
 }
