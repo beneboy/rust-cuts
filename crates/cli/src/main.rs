@@ -76,6 +76,8 @@ fn execute() -> Result<()> {
     let mut execution_context: CommandExecutionTemplate;
     let parameter_definitions: Option<HashMap<String, ParameterDefinition>>;
 
+    let mut is_rerun = false;
+    
     match selected_option {
         Index(selected_index) => {
             let selected_command = &parsed_command_defs[selected_index];
@@ -100,6 +102,7 @@ fn execute() -> Result<()> {
         Rerun(last_command) => {
             execution_context = last_command.clone();
             parameter_definitions = last_command.template_context.clone();
+            is_rerun = true;
         }
         Quit => {
             let mut stdout = stdout();
@@ -125,7 +128,7 @@ fn execute() -> Result<()> {
     let mut need_to_prompt = should_prompt_for_parameters(
         tokens,
         &filled_parameters,
-        last_command.is_some(),
+        is_rerun,
         &args.get_parameter_mode()?,
     );
 

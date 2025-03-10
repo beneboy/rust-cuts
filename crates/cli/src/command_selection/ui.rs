@@ -155,6 +155,11 @@ pub fn prompt_for_command_choice(
                             MouseEventKind::Up(button) => {
                                 if button == MouseButton::Left {
                                     if let Some(down_row) = down_row {
+                                        if down_row == 0 {
+                                            // Click on header
+                                            continue;
+                                        }
+
                                         let clicked_index =
                                             (down_row - 1) as usize + viewport.offset;
 
@@ -207,7 +212,7 @@ pub fn prompt_for_command_choice(
                     }
                 }
                 Event::Key(key_event) => {
-                    handle_key_event(
+                    let command_from_key_event = handle_key_event(
                         key_event,
                         &mut index_change_direction,
                         &mut display_mode,
@@ -217,6 +222,10 @@ pub fn prompt_for_command_choice(
                         selected_index,
                         last_command,
                     )?;
+
+                    if let Some(command_from_key_event) = command_from_key_event {
+                        return Ok(command_from_key_event);
+                    }
                 }
                 Event::Resize(width, height) => {
                     handle_resize(
