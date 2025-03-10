@@ -1,6 +1,6 @@
 use clap::Parser;
+use crate::parameters::{ParameterMode, ParameterModeProvider, determine_parameter_mode};
 use rust_cuts_core::error::Result;
-use rust_cuts_core::error::Error::MixedParameterMode;
 
 #[derive(Parser, Debug)] // requires `derive` feature
 #[command(term_width = 0)] // Just to make testing across clap features easier
@@ -43,27 +43,9 @@ pub struct Args {
     pub positional_args: Vec<String>,
 }
 
-#[derive(PartialEq)]
-pub enum ParameterMode {
-    /// No parameters provided, will use default values or prompt interactively
-    None,
-    /// Named parameters provided with -p/--param flags (key=value format)
-    Named(Vec<String>),
-    /// Positional parameters provided as trailing arguments
-    Positional(Vec<String>),
-}
 
-impl Args {
-    /// Validates that named and positional parameters aren't mixed
-    pub fn get_parameter_mode(&self) -> Result<ParameterMode> {
-        let using_named = !self.parameters.is_empty();
-        let using_positional = !self.positional_args.is_empty();
-
-        match (using_named, using_positional) {
-            (true, true) => Err(MixedParameterMode),
-            (true, false) => Ok(ParameterMode::Named(self.parameters.clone())),
-            (false, true) => Ok(ParameterMode::Positional(self.positional_args.clone())),
-            (false, false) => Ok(ParameterMode::None),
-        }
+impl ParameterModeProvider for Args {
+    fn get_parameter_mode(&self) -> Result<ParameterMode> {
+        determine_parameter_mode(&self.parameters, &self.positional_args)
     }
 }

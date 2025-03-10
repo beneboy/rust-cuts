@@ -3,7 +3,6 @@ use command_selection::fill_parameter_values;
 use command_selection::CommandChoice::{Index, Quit, Rerun};
 use crossterm::terminal::{disable_raw_mode, Clear, ClearType};
 use crossterm::{cursor, queue, terminal};
-use indexmap::IndexSet;
 use itertools::Itertools;
 use log::{debug, info, warn};
 use rust_cuts_core::command_definitions::{
@@ -19,69 +18,17 @@ use std::env;
 use std::io::{stdout, Write};
 use std::process::{Command, ExitCode};
 
-use crate::parameter_processing::process_command_line_parameters;
-use crate::cli_args::{Args, ParameterMode};
-use crate::command_selection::CommandChoice::CommandId;
+use crate::cli_args::Args;
 use crate::command_selection::{CommandChoice, RunChoice};
+use crate::parameters::{process_command_line_parameters,  ParameterModeProvider};
 use rust_cuts_core::interpolation::interpolate_command;
+use crate::command_selection::CommandChoice::{CommandId};
+use crate::parameters::validation::should_prompt_for_parameters;
 
-mod parameter_processing;
 mod cli_args;
 pub mod command_selection;
+mod parameters;
 
-const LAST_COMMAND_OPTION: char = 'r';
-
-/// Determines whether to prompt the user for parameter values.
-///
-/// The function avoids prompting when:
-/// 1. The command template contains no tokens to interpolate
-/// 2. The user reruns a command with all parameters already provided
-/// 3. The user supplies all needed parameters via command-line (named or positional)
-///
-/// The function prompts when:
-/// 1. The user runs a new command without providing command-line parameters
-/// 2. Command-line parameters don't cover all required tokens
-/// 3. The user reruns a command that requires parameters not present in the previous execution
-///
-/// For reruns, parameter requirements may change if someone modified the command definition
-/// since the last execution (e.g., added new parameters or edited the YAML file).
-fn should_prompt_for_parameters(
-    tokens: &IndexSet<String>,
-    parameter_definitions: &Option<HashMap<String, ParameterDefinition>>,
-    filled_parameters: &Option<HashMap<String, ParameterDefinition>>,
-    is_rerun: bool,
-    parameter_mode: ParameterMode,
-) -> bool {
-    // No need to prompt if no tokens to fill
-    if tokens.is_empty() {
-        return false;
-    }
-
-    // Always prompt if not a rerun (unless using command-line params)
-    if !is_rerun && parameter_mode == ParameterMode::None {
-        return true;
-    }
-
-    // If using command-line parameters (Named or Positional), check if any are missing
-    if parameter_mode != ParameterMode::None {
-        if let Some(params) = filled_parameters {
-            return tokens.iter().any(|token| {
-                match params.get(token) {
-                    Some(param) => param.default.is_none(),
-                    None => true, // Token has no parameter definition
-                }
-            });
-        }
-    }
-
-    // For reruns, check if all tokens have parameter definitions
-    if let Some(params) = parameter_definitions {
-        return tokens.iter().any(|token| !params.contains_key(token));
-    }
-
-    // Default: prompt is needed
-    true
-}
 
 fn get_rerun_request_is_valid(args: &Args) -> Result<bool> {
     if !args.rerun_last_command {
@@ -177,10 +124,9 @@ fn execute() -> Result<()> {
     // Initial prompt check
     let mut need_to_prompt = should_prompt_for_parameters(
         tokens,
-        &parameter_definitions,
         &filled_parameters,
         last_command.is_some(),
-        args.get_parameter_mode()?,
+        &args.get_parameter_mode()?,
     );
 
     loop {
