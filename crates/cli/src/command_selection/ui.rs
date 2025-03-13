@@ -81,7 +81,6 @@ pub fn prompt_for_command_choice(
 ) -> Result<CommandChoice> {
     let mut stdout = stdout();
 
-    let mut selected_index: usize = 0;
     stdout.execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
 
@@ -106,7 +105,7 @@ pub fn prompt_for_command_choice(
     };
 
     let mut ui_state = UiState {
-        selected_index,
+        selected_index: 0,
         viewport,
         is_filtering: false,
         filter_text: String::new(),
@@ -152,69 +151,28 @@ pub fn prompt_for_command_choice(
                     modifiers,
                     ..
                 }) => {
-                    if modifiers == KeyModifiers::NONE {
-                        match kind {
-                            MouseEventKind::Down(button) => {
-                                if button == MouseButton::Left {
-                                    down_row = Some(row);
-                                }
-                            }
-                            MouseEventKind::Up(button) => {
-                                if button == MouseButton::Left {
-                                    if let Some(down_row) = down_row {
-                                        if down_row == 0 {
-                                            // Click on header
-                                            continue;
-                                        }
+                    if modifiers != KeyModifiers::NONE {
+                        continue;
+                    }
+                    let (new_state, command_choice, clicked_row) = handle_mouse_event(
+                        kind,
+                        down_row,
+                        row,
+                        &ui_state,
+                        &indexes_to_display,
+                        &last_command
+                    );
 
-                                        let clicked_index = (down_row - 1) as usize + ui_state.viewport.offset;
+                    if let Some(command_choice) = command_choice {
+                        return Ok(command_choice);
+                    }
 
-                                        if clicked_index < indexes_to_display.len() {
-                                            clear_and_write_command_row(
-                                                selected_index as u16 + 1,
-                                                &command_display,
-                                                &indexes_to_display[selected_index],
-                                                false,
-                                                None,
-                                            )?;
+                    if let Some(state) = new_state {
+                        new_ui_state = Some(state);
+                    }
 
-                                            clear_and_write_command_row(
-                                                down_row,
-                                                &command_display,
-                                                &indexes_to_display[clicked_index],
-                                                true,
-                                                None,
-                                            )?;
-
-                                            selected_index = clicked_index;
-                                            queue!(
-                                                stdout,
-                                                MoveTo(0, indexes_to_display.len() as u16 + 1)
-                                            )?;
-                                            match indexes_to_display[clicked_index] {
-                                                Normal(i) => return Ok(CommandChoice::Index(i)),
-                                                CommandIndex::Rerun => {
-                                                    if let Some(last_command) = last_command {
-                                                        return Ok(CommandChoice::Rerun(
-                                                            last_command.clone(),
-                                                        ));
-                                                    };
-                                                }
-                                            }
-                                        }
-                                    }
-                                    down_row = None;
-                                }
-                            }
-                            MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
-                                index_change_direction = if kind == MouseEventKind::ScrollDown {
-                                    Some(Down)
-                                } else {
-                                    Some(Up)
-                                };
-                            }
-                            _ => {}
-                        }
+                    if let Some(clicked_row) = clicked_row {
+                        down_row = Some(clicked_row);
                     }
                 }
                 Event::Key(key_event) => {
@@ -222,7 +180,6 @@ pub fn prompt_for_command_choice(
                         key_event,
                         &ui_state,
                         &indexes_to_display,
-                        selected_index,
                         last_command,
                     )?;
 
@@ -243,7 +200,6 @@ pub fn prompt_for_command_choice(
                         width,
                         height,
                         &ui_state,
-                        selected_index,
                         &indexes_to_display,
                     ));
                 }
@@ -257,7 +213,7 @@ pub fn prompt_for_command_choice(
                     direction,
                     &ui_state,
                     &indexes_to_display,
-                )?);
+                ));
             }
         }
     }
@@ -268,7 +224,6 @@ fn handle_key_event(
     key_event: event::KeyEvent,
     ui_state: &UiState, // Now immutable
     indexes_to_display: &[CommandIndex],
-    selected_index: usize,
     last_command: Option<&CommandExecutionTemplate>,
 ) -> Result<(
     Option<CommandChoice>,
@@ -288,7 +243,7 @@ fn handle_key_event(
             Ok((None, new_state, direction))
         }
         KeyCode::Enter => {
-            if let Some(command_index) = indexes_to_display.get(selected_index) {
+            if let Some(command_index) = indexes_to_display.get(ui_state.selected_index) {
                 match command_index {
                     Normal(i) => return Ok((Some(CommandChoice::Index(*i)), None, None)),
                     CommandIndex::Rerun => {
@@ -303,6 +258,7 @@ fn handle_key_event(
                 }
             } else {
                 execute!(stdout(), Print("\x07"))?;
+                stdout().flush()?;
             }
             Ok((None, None, None))
         }
@@ -355,7 +311,6 @@ fn handle_resize(
     width: u16,
     height: u16,
     ui_state: &UiState,
-    selected_index: usize,
     indexes_to_display: &[CommandIndex],
 ) -> UiState {
     let new_height = height.saturating_sub(2);
@@ -372,8 +327,8 @@ fn handle_resize(
             let height_increase = new_height - new_viewport.height;
             new_viewport.offset = new_viewport.offset.saturating_sub(height_increase as usize);
         }
-        std::cmp::Ordering::Less if selected_index >= new_viewport.offset + new_height as usize => {
-            new_viewport.offset = selected_index.saturating_sub(new_height as usize - 1);
+        std::cmp::Ordering::Less if ui_state.selected_index >= new_viewport.offset + new_height as usize => {
+            new_viewport.offset = ui_state.selected_index.saturating_sub(new_height as usize - 1);
 
             if new_viewport.offset + new_height as usize > indexes_to_display.len() {
                 new_viewport.offset = indexes_to_display.len().saturating_sub(new_height as usize);
@@ -386,17 +341,82 @@ fn handle_resize(
     ui_state
 }
 
+fn handle_mouse_event(
+    kind: MouseEventKind,
+    previous_mouse_down_row: Option<u16>,
+    mouse_down_row: u16,
+    ui_state: &UiState,
+    indexes_to_display: &[CommandIndex],
+    last_command: &Option<&CommandExecutionTemplate>,
+) -> (
+    Option<UiState>, // UIState if it needs redrawing
+    Option<CommandChoice>, // if command selected, this is populated
+    Option<u16>, // clicked row
+) {
+    match kind {
+        MouseEventKind::Down(button) => {
+            if button == MouseButton::Left {
+                return (None, None, Some(mouse_down_row));
+            }
+
+            (None, None, None)
+        }
+        MouseEventKind::Up(button) => {
+            if button == MouseButton::Left {
+                if let Some(down_row) = previous_mouse_down_row {
+                    if down_row == 0 {
+                        // Click on header
+                        return (None, None, None);
+                    }
+
+                    let clicked_index = (down_row - 1) as usize + ui_state.viewport.offset;
+
+                    if clicked_index < indexes_to_display.len() {
+                        let clicked_command = match indexes_to_display[clicked_index] {
+                            Normal(i) => Some(CommandChoice::Index(i)),
+                            CommandIndex::Rerun => {
+                                (*last_command).map(|last_command| CommandChoice::Rerun(last_command.clone()))
+                            }
+                        };
+
+                        return (None, clicked_command, Some(down_row));
+                    }
+                }
+            }
+            (None, None, None)
+        }
+        MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
+            let index_change_direction = if kind == MouseEventKind::ScrollDown {
+                Down
+            } else {
+                Up
+            };
+
+            let new_state = handle_index_change(
+                index_change_direction,
+                ui_state,
+                indexes_to_display,
+            );
+
+            (Some(new_state), None, None)
+        }
+        _ => {
+            (None, None, None)
+        }
+    }
+}
+
 /// Handle changes to the selected index
 fn handle_index_change(
     direction: CycleDirection,
     ui_state: &UiState,
     indexes_to_display: &[CommandIndex],
-) -> Result<UiState> {
-    Ok(move_selected_index(
+) -> UiState {
+    move_selected_index(
         ui_state,
         indexes_to_display.len(),
         Some(&direction),
-    ))
+    )
 }
 
 /// Print the header for the command selection UI
