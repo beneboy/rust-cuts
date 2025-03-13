@@ -19,7 +19,9 @@ use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
 
 use super::colors::CommandDefinitionColor;
-use super::types::{CommandChoice, CommandForDisplay, CommandIndex, CycleDirection, UiState, ViewportState};
+use super::types::{
+    CommandChoice, CommandForDisplay, CommandIndex, CycleDirection, UiState, ViewportState,
+};
 use super::LAST_COMMAND_OPTION;
 use crate::command_selection::types::CommandIndex::Normal;
 use crate::command_selection::types::CycleDirection::{Down, Up};
@@ -111,7 +113,10 @@ pub fn prompt_for_command_choice(
         filter_text: String::new(),
     };
 
-    let mut indexes_to_display = filter_displayed_indexes(&command_display, &ui_state.filter_text);
+    let matcher = SkimMatcherV2::default();
+
+    let mut indexes_to_display =
+        filter_displayed_indexes(&matcher, &command_display, &ui_state.filter_text);
 
     let mut down_row: Option<u16> = None;
     let mut index_change_direction: Option<CycleDirection> = None;
@@ -132,7 +137,7 @@ pub fn prompt_for_command_choice(
         force_initial_draw = false;
 
         if should_redraw {
-            indexes_to_display = filter_displayed_indexes(&command_display, &ui_state.filter_text);
+            indexes_to_display = filter_displayed_indexes(&matcher, &command_display, &ui_state.filter_text);
 
             // Get the current state to work with (from new_ui_state, which we know exists now)
             let current_ui_state = new_ui_state.unwrap();
@@ -160,7 +165,7 @@ pub fn prompt_for_command_choice(
                         row,
                         &ui_state,
                         &indexes_to_display,
-                        &last_command
+                        &last_command,
                     );
 
                     if let Some(command_choice) = command_choice {
@@ -176,12 +181,8 @@ pub fn prompt_for_command_choice(
                     }
                 }
                 Event::Key(key_event) => {
-                    let (command_choice, new_state, new_direction) = handle_key_event(
-                        key_event,
-                        &ui_state,
-                        &indexes_to_display,
-                        last_command,
-                    )?;
+                    let (command_choice, new_state, new_direction) =
+                        handle_key_event(key_event, &ui_state, &indexes_to_display, last_command)?;
 
                     if let Some(choice) = command_choice {
                         return Ok(choice);
@@ -196,12 +197,8 @@ pub fn prompt_for_command_choice(
                     }
                 }
                 Event::Resize(width, height) => {
-                    new_ui_state = Some(handle_resize(
-                        width,
-                        height,
-                        &ui_state,
-                        &indexes_to_display,
-                    ));
+                    new_ui_state =
+                        Some(handle_resize(width, height, &ui_state, &indexes_to_display));
                 }
                 Event::FocusGained => {}
                 Event::FocusLost => {}
@@ -209,10 +206,10 @@ pub fn prompt_for_command_choice(
             }
 
             if let Some(direction) = index_change_direction.take() {
-                new_ui_state = Some(handle_index_change(
-                    direction,
+                new_ui_state = Some(move_selected_index(
                     &ui_state,
-                    &indexes_to_display,
+                    indexes_to_display.len(),
+                    &direction,
                 ));
             }
         }
@@ -327,8 +324,12 @@ fn handle_resize(
             let height_increase = new_height - new_viewport.height;
             new_viewport.offset = new_viewport.offset.saturating_sub(height_increase as usize);
         }
-        std::cmp::Ordering::Less if ui_state.selected_index >= new_viewport.offset + new_height as usize => {
-            new_viewport.offset = ui_state.selected_index.saturating_sub(new_height as usize - 1);
+        std::cmp::Ordering::Less
+            if ui_state.selected_index >= new_viewport.offset + new_height as usize =>
+        {
+            new_viewport.offset = ui_state
+                .selected_index
+                .saturating_sub(new_height as usize - 1);
 
             if new_viewport.offset + new_height as usize > indexes_to_display.len() {
                 new_viewport.offset = indexes_to_display.len().saturating_sub(new_height as usize);
@@ -349,9 +350,9 @@ fn handle_mouse_event(
     indexes_to_display: &[CommandIndex],
     last_command: &Option<&CommandExecutionTemplate>,
 ) -> (
-    Option<UiState>, // UIState if it needs redrawing
+    Option<UiState>,       // UIState if it needs redrawing
     Option<CommandChoice>, // if command selected, this is populated
-    Option<u16>, // clicked row
+    Option<u16>,           // clicked row
 ) {
     match kind {
         MouseEventKind::Down(button) => {
@@ -374,9 +375,8 @@ fn handle_mouse_event(
                     if clicked_index < indexes_to_display.len() {
                         let clicked_command = match indexes_to_display[clicked_index] {
                             Normal(i) => Some(CommandChoice::Index(i)),
-                            CommandIndex::Rerun => {
-                                (*last_command).map(|last_command| CommandChoice::Rerun(last_command.clone()))
-                            }
+                            CommandIndex::Rerun => (*last_command)
+                                .map(|last_command| CommandChoice::Rerun(last_command.clone())),
                         };
 
                         return (None, clicked_command, Some(down_row));
@@ -392,31 +392,13 @@ fn handle_mouse_event(
                 Up
             };
 
-            let new_state = handle_index_change(
-                index_change_direction,
-                ui_state,
-                indexes_to_display,
-            );
+            let new_state =
+                move_selected_index(ui_state, indexes_to_display.len(), &index_change_direction);
 
             (Some(new_state), None, None)
         }
-        _ => {
-            (None, None, None)
-        }
+        _ => (None, None, None),
     }
-}
-
-/// Handle changes to the selected index
-fn handle_index_change(
-    direction: CycleDirection,
-    ui_state: &UiState,
-    indexes_to_display: &[CommandIndex],
-) -> UiState {
-    move_selected_index(
-        ui_state,
-        indexes_to_display.len(),
-        Some(&direction),
-    )
 }
 
 /// Print the header for the command selection UI
@@ -529,7 +511,6 @@ fn clear_and_write_command_row(
         SetBackgroundColor(Reset),
         SetForegroundColor(Reset),
     )?;
-    //stdout.flush()?;
 
     Ok(())
 }
@@ -562,10 +543,6 @@ fn print_commands_with_selection(
         queue!(stdout, cursor::MoveToNextLine(1))?;
     }
 
-    /*if let Err(e) = stdout.flush() {
-        return Err(Error::Stdio(e));
-    }*/
-
     Ok(())
 }
 
@@ -573,7 +550,7 @@ fn print_commands_with_selection(
 fn move_selected_index(
     ui_state: &UiState,
     commands_to_display_length: usize,
-    direction: Option<&CycleDirection>,
+    direction: &CycleDirection,
 ) -> UiState {
     if commands_to_display_length == 0 {
         return ui_state.clone();
@@ -583,7 +560,7 @@ fn move_selected_index(
     let mut ui_state = ui_state.clone();
 
     match direction {
-        Some(Up) => {
+        Up => {
             if new_index == 0 {
                 new_index = commands_to_display_length - 1;
                 ui_state.viewport.offset =
@@ -595,7 +572,7 @@ fn move_selected_index(
                 }
             }
         }
-        Some(Down) => {
+        Down => {
             new_index = (new_index + 1) % commands_to_display_length;
             if new_index < ui_state.selected_index {
                 ui_state.viewport.offset = 0;
@@ -603,7 +580,6 @@ fn move_selected_index(
                 ui_state.viewport.offset = new_index - ui_state.viewport.height as usize + 1;
             }
         }
-        None => {}
     }
 
     ui_state.selected_index = new_index;
@@ -612,10 +588,10 @@ fn move_selected_index(
 
 /// Filter the displayed command indexes based on a predicate
 fn filter_displayed_indexes(
+    matcher: &SkimMatcherV2,
     command_lookup: &HashMap<CommandIndex, CommandForDisplay>,
     predicate: &str,
 ) -> Vec<CommandIndex> {
-    let matcher = SkimMatcherV2::default();
     let predicate_index = predicate.parse::<usize>().ok();
 
     let mut filtered: Vec<CommandIndex> = command_lookup
