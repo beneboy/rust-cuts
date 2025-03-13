@@ -11,20 +11,20 @@ use crossterm::style::Color::{DarkBlue, DarkGreen, Reset, Yellow};
 use crossterm::style::{
     Attribute, Color, Print, SetAttribute, SetBackgroundColor, SetForegroundColor,
 };
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType};
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use crossterm::{cursor, event, execute, queue, terminal, ExecutableCommand};
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
 
-use super::types::{
-    CommandChoice, CommandForDisplay, CommandIndex, CycleDirection, DisplayMode, ViewportState,
-};
 use super::colors::CommandDefinitionColor;
+use super::types::{CommandChoice, CommandForDisplay, CommandIndex, CycleDirection, UiState, ViewportState};
 use super::LAST_COMMAND_OPTION;
 use crate::command_selection::types::CommandIndex::Normal;
 use crate::command_selection::types::CycleDirection::{Down, Up};
 use rust_cuts_core::command_definitions::{CommandDefinition, CommandExecutionTemplate};
-use rust_cuts_core::error::{Error, Result};
+use rust_cuts_core::error::Result;
 
 struct RawModeGuard;
 
@@ -34,9 +34,45 @@ impl Drop for RawModeGuard {
         let _ = disable_raw_mode();
         let mut stdout = stdout();
         let _ = stdout.execute(DisableMouseCapture);
+        let _ = stdout.execute(LeaveAlternateScreen);
     }
 }
 
+fn redraw_ui(
+    ui_state: &UiState,
+    indexes_to_display: &[CommandIndex],
+    command_lookup: &HashMap<CommandIndex, CommandForDisplay>,
+) -> Result<()> {
+    let mut stdout = stdout();
+
+    queue!(stdout, Clear(ClearType::All), MoveTo(0, 0))?;
+
+    print_header(ui_state, indexes_to_display.len())?;
+
+    if indexes_to_display.is_empty() {
+        queue!(
+            stdout,
+            SetForegroundColor(Color::Red),
+            Print("No matching commands!".to_string()),
+            SetAttribute(Attribute::Reset),
+            cursor::MoveToNextLine(1)
+        )?;
+    } else {
+        print_commands_with_selection(ui_state, command_lookup, indexes_to_display)?;
+    }
+
+    if ui_state.is_filtering {
+        queue!(
+            stdout,
+            SetAttribute(Attribute::Bold),
+            Print(format!("Filter: {}", ui_state.filter_text)),
+            SetAttribute(Attribute::Reset)
+        )?;
+    }
+
+    stdout.flush()?;
+    Ok(())
+}
 
 /// Prompts the user to choose a command from the list
 pub fn prompt_for_command_choice(
@@ -46,105 +82,76 @@ pub fn prompt_for_command_choice(
     let mut stdout = stdout();
 
     let mut selected_index: usize = 0;
+    stdout.execute(EnterAlternateScreen)?;
     enable_raw_mode()?;
 
     let _raw_mode_guard = RawModeGuard; // When this goes out of scope, raw mode and mouse capture is disabled
     stdout.execute(event::EnableMouseCapture)?;
 
-    let mut should_reprint = true;
-    let mut typed_index = String::new();
-    let mut filter_text = String::new();
-    let mut display_mode = DisplayMode {
-        is_filtering: false,
-    };
-
     let mut command_display: HashMap<CommandIndex, CommandForDisplay> = command_definitions
         .iter()
         .enumerate()
-        .map(|(i, cd)| {
-            (
-                CommandIndex::Normal(i),
-                CommandForDisplay::Normal(cd.clone()),
-            )
-        })
+        .map(|(i, cd)| (Normal(i), CommandForDisplay::Normal(cd.clone())))
         .collect();
 
     if let Some(lc) = last_command {
         command_display.insert(CommandIndex::Rerun, CommandForDisplay::Rerun(lc.clone()));
     }
-
-    let mut indexes_to_display = filter_displayed_indexes(&command_display, &filter_text);
-
-    let mut down_row: Option<u16> = None;
-    let mut index_change_direction: Option<CycleDirection> = None;
-
     let (width, height) = terminal::size()?;
 
-    let mut viewport = ViewportState {
+    let viewport = ViewportState {
         offset: 0,
         height: height.saturating_sub(2), // Subtract 2 for header and filter line
         width,
     };
 
+    let mut ui_state = UiState {
+        selected_index,
+        viewport,
+        is_filtering: false,
+        filter_text: String::new(),
+    };
+
+    let mut indexes_to_display = filter_displayed_indexes(&command_display, &ui_state.filter_text);
+
+    let mut down_row: Option<u16> = None;
+    let mut index_change_direction: Option<CycleDirection> = None;
+
+    let mut new_ui_state = Some(ui_state.clone());
+
+    let mut force_initial_draw = true;
+
     loop {
-        if should_reprint {
-            let indexes_before = indexes_to_display.clone();
-            indexes_to_display = filter_displayed_indexes(&command_display, &filter_text);
-
-            if indexes_before == indexes_to_display {
-                selected_index = typed_index.parse::<usize>().unwrap_or(0);
+        // Only check for UI state changes if we have a new UI state
+        let should_redraw = force_initial_draw
+            || if let Some(current_ui_state) = &new_ui_state {
+                *current_ui_state != ui_state
             } else {
-                (selected_index, _) = move_selected_index(
-                    selected_index,
-                    &mut viewport,
-                    indexes_to_display.len(),
-                    None,
-                );
-                typed_index = selected_index.to_string();
-            }
+                false
+            };
 
-            queue!(stdout, Clear(ClearType::All), MoveTo(0, 0))?;
+        force_initial_draw = false;
 
-            print_header(&display_mode, selected_index, indexes_to_display.len())?;
+        if should_redraw {
+            indexes_to_display = filter_displayed_indexes(&command_display, &ui_state.filter_text);
 
-            if indexes_to_display.is_empty() {
-                queue!(
-                    stdout,
-                    SetForegroundColor(Color::Red),
-                    Print("No matching commands!".to_string()),
-                    SetAttribute(Attribute::Reset),
-                    cursor::MoveToNextLine(1)
-                )?;
-            } else {
-                print_commands_with_selection(
-                    &command_display,
-                    &indexes_to_display,
-                    selected_index,
-                    &viewport,
-                )?;
-            }
+            // Get the current state to work with (from new_ui_state, which we know exists now)
+            let current_ui_state = new_ui_state.unwrap();
 
-            if display_mode.is_filtering {
-                queue!(
-                    stdout,
-                    SetAttribute(Attribute::Bold),
-                    Print(format!("Filter: {filter_text}")),
-                    SetAttribute(Attribute::Reset)
-                )?;
-            }
+            redraw_ui(&current_ui_state, &indexes_to_display, &command_display)?;
 
-            stdout.flush()?;
-            should_reprint = false;
+            ui_state = current_ui_state;
+            new_ui_state = None;
         }
 
         if event::poll(Duration::from_millis(500))? {
             match event::read()? {
                 Event::Mouse(MouseEvent {
-                                 kind,
-                                 row,
-                                 modifiers,
-                                 ..
-                             }) => {
+                    kind,
+                    row,
+                    modifiers,
+                    ..
+                }) => {
                     if modifiers == KeyModifiers::NONE {
                         match kind {
                             MouseEventKind::Down(button) => {
@@ -160,8 +167,7 @@ pub fn prompt_for_command_choice(
                                             continue;
                                         }
 
-                                        let clicked_index =
-                                            (down_row - 1) as usize + viewport.offset;
+                                        let clicked_index = (down_row - 1) as usize + ui_state.viewport.offset;
 
                                         if clicked_index < indexes_to_display.len() {
                                             clear_and_write_command_row(
@@ -212,30 +218,34 @@ pub fn prompt_for_command_choice(
                     }
                 }
                 Event::Key(key_event) => {
-                    let command_from_key_event = handle_key_event(
+                    let (command_choice, new_state, new_direction) = handle_key_event(
                         key_event,
-                        &mut index_change_direction,
-                        &mut display_mode,
-                        &mut filter_text,
-                        &mut should_reprint,
+                        &ui_state,
                         &indexes_to_display,
                         selected_index,
                         last_command,
                     )?;
 
-                    if let Some(command_from_key_event) = command_from_key_event {
-                        return Ok(command_from_key_event);
+                    if let Some(choice) = command_choice {
+                        return Ok(choice);
+                    }
+
+                    if let Some(state) = new_state {
+                        new_ui_state = Some(state);
+                    }
+
+                    if let Some(dir) = new_direction {
+                        index_change_direction = Some(dir);
                     }
                 }
                 Event::Resize(width, height) => {
-                    handle_resize(
+                    new_ui_state = Some(handle_resize(
                         width,
                         height,
-                        &mut viewport,
+                        &ui_state,
                         selected_index,
                         &indexes_to_display,
-                        &mut should_reprint,
-                    );
+                    ));
                 }
                 Event::FocusGained => {}
                 Event::FocusLost => {}
@@ -243,16 +253,11 @@ pub fn prompt_for_command_choice(
             }
 
             if let Some(direction) = index_change_direction.take() {
-                handle_index_change(
+                new_ui_state = Some(handle_index_change(
                     direction,
-                    &mut selected_index,
-                    &mut viewport,
+                    &ui_state,
                     &indexes_to_display,
-                    &command_display,
-                    &mut typed_index,
-                    &mut should_reprint,
-                    &display_mode,
-                )?;
+                )?);
             }
         }
     }
@@ -260,78 +265,88 @@ pub fn prompt_for_command_choice(
 
 /// Handle keyboard events in the command selection UI
 fn handle_key_event(
-    key_event: crossterm::event::KeyEvent,
-    index_change_direction: &mut Option<CycleDirection>,
-    display_mode: &mut DisplayMode,
-    filter_text: &mut String,
-    should_reprint: &mut bool,
+    key_event: event::KeyEvent,
+    ui_state: &UiState, // Now immutable
     indexes_to_display: &[CommandIndex],
     selected_index: usize,
     last_command: Option<&CommandExecutionTemplate>,
-) -> Result<Option<CommandChoice>> {
+) -> Result<(
+    Option<CommandChoice>,
+    Option<UiState>,
+    Option<CycleDirection>,
+)> {
+    // Initialize with no changes
+    let mut new_state = None;
+
     match key_event.code {
         KeyCode::Up | KeyCode::Down => {
-            *index_change_direction = if key_event.code == KeyCode::Up {
+            let direction = if key_event.code == KeyCode::Up {
                 Some(Up)
             } else {
                 Some(Down)
             };
-            Ok(None)
+            Ok((None, new_state, direction))
         }
         KeyCode::Enter => {
             if let Some(command_index) = indexes_to_display.get(selected_index) {
                 match command_index {
-                    Normal(i) => return Ok(Some(CommandChoice::Index(*i))),
+                    Normal(i) => return Ok((Some(CommandChoice::Index(*i)), None, None)),
                     CommandIndex::Rerun => {
                         if let Some(last_command) = last_command {
-                            return Ok(Some(CommandChoice::Rerun(last_command.clone())));
+                            return Ok((
+                                Some(CommandChoice::Rerun(last_command.clone())),
+                                None,
+                                None,
+                            ));
                         };
                     }
                 }
             } else {
                 execute!(stdout(), Print("\x07"))?;
             }
-            Ok(None)
+            Ok((None, None, None))
         }
         KeyCode::Backspace => {
-            if filter_text.pop().is_some() {
-                *should_reprint = true;
+            if !ui_state.filter_text.is_empty() {
+                // Create a clone of the current state
+                let mut updated_state = ui_state.clone();
+
+                // Remove the last character from the filter text
+                updated_state.filter_text.pop();
+
+                // Return the new state
+                new_state = Some(updated_state);
+                return Ok((None, new_state, None));
             }
-            Ok(None)
+            Ok((None, None, None))
         }
-        KeyCode::Char('c')
-        if key_event
-            .modifiers
-            .contains(crossterm::event::KeyModifiers::CONTROL) =>
-            {
-                Ok(Some(CommandChoice::Quit))
-            }
-        KeyCode::Char(c) if display_mode.is_filtering => {
-            filter_text.push(c);
-            *should_reprint = true;
-            Ok(None)
+        KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+            Ok((Some(CommandChoice::Quit), None, None))
         }
-        KeyCode::Esc if display_mode.is_filtering => {
-            display_mode.is_filtering = false;
-            *should_reprint = true;
-            *filter_text = "".to_string();
-            Ok(None)
+        KeyCode::Char(c) if ui_state.is_filtering => {
+            let mut new_state = ui_state.clone();
+            new_state.filter_text.push(c);
+            Ok((None, Some(new_state), None))
+        }
+        KeyCode::Esc if ui_state.is_filtering => {
+            let mut updated_state = ui_state.clone();
+            updated_state.is_filtering = false;
+            updated_state.filter_text = "".to_string();
+            Ok((None, Some(updated_state), None))
         }
         KeyCode::Char('/') => {
-            display_mode.is_filtering = true;
-            *should_reprint = true;
-            Ok(None)
+            let mut updated_state = ui_state.clone();
+            updated_state.is_filtering = true;
+            Ok((None, Some(updated_state), None))
         }
-        KeyCode::Char('q') => {
-            Ok(Some(CommandChoice::Quit))
-        }
+        KeyCode::Char('q') => Ok((Some(CommandChoice::Quit), None, None)),
         KeyCode::Char(LAST_COMMAND_OPTION) => {
             if let Some(last_command) = last_command {
-                return Ok(Some(CommandChoice::Rerun(last_command.clone())));
+                return Ok((Some(CommandChoice::Rerun(last_command.clone())), None, None));
             }
-            Ok(None)
+            Ok((None, None, None))
         }
-        _ => Ok(None),
+        _ => Ok((None, None, None)),
     }
 }
 
@@ -339,100 +354,53 @@ fn handle_key_event(
 fn handle_resize(
     width: u16,
     height: u16,
-    viewport: &mut ViewportState,
+    ui_state: &UiState,
     selected_index: usize,
     indexes_to_display: &[CommandIndex],
-    should_reprint: &mut bool,
-) {
+) -> UiState {
     let new_height = height.saturating_sub(2);
-    viewport.width = width;
+    let mut ui_state = ui_state.clone();
+    let mut new_viewport = ViewportState {
+        width,
+        height: new_height,
+        offset: ui_state.viewport.offset,
+    };
 
     // If growing taller, try to show more items above current selection
-    match new_height.cmp(&viewport.height) {
-        std::cmp::Ordering::Greater if viewport.offset > 0 => {
-            let height_increase = new_height - viewport.height;
-            viewport.offset = viewport.offset.saturating_sub(height_increase as usize);
+    match new_height.cmp(&ui_state.viewport.height) {
+        std::cmp::Ordering::Greater if new_viewport.offset > 0 => {
+            let height_increase = new_height - new_viewport.height;
+            new_viewport.offset = new_viewport.offset.saturating_sub(height_increase as usize);
         }
-        std::cmp::Ordering::Less if selected_index >= viewport.offset + new_height as usize => {
-            viewport.offset = selected_index.saturating_sub(new_height as usize - 1);
+        std::cmp::Ordering::Less if selected_index >= new_viewport.offset + new_height as usize => {
+            new_viewport.offset = selected_index.saturating_sub(new_height as usize - 1);
 
-            if viewport.offset + new_height as usize > indexes_to_display.len() {
-                viewport.offset = indexes_to_display.len().saturating_sub(new_height as usize);
+            if new_viewport.offset + new_height as usize > indexes_to_display.len() {
+                new_viewport.offset = indexes_to_display.len().saturating_sub(new_height as usize);
             }
         }
         _ => {}
     }
 
-    viewport.height = new_height;
-    *should_reprint = true;
+    ui_state.viewport = new_viewport;
+    ui_state
 }
 
 /// Handle changes to the selected index
 fn handle_index_change(
     direction: CycleDirection,
-    selected_index: &mut usize,
-    viewport: &mut ViewportState,
+    ui_state: &UiState,
     indexes_to_display: &[CommandIndex],
-    command_display: &HashMap<CommandIndex, CommandForDisplay>,
-    typed_index: &mut String,
-    should_reprint: &mut bool,
-    display_mode: &DisplayMode,
-) -> Result<()> {
-    let (new_index, viewport_changed) = move_selected_index(
-        *selected_index,
-        viewport,
+) -> Result<UiState> {
+    Ok(move_selected_index(
+        ui_state,
         indexes_to_display.len(),
         Some(&direction),
-    );
-
-    if viewport_changed {
-        *should_reprint = true;
-    } else {
-        print_header(display_mode, new_index, indexes_to_display.len())?;
-
-        // Calculate visible row positions relative to viewport
-        let old_row = (*selected_index - viewport.offset) as u16 + 1;
-        let new_row = (new_index - viewport.offset) as u16 + 1;
-
-        // Only try to update individual rows if they're both visible
-        if old_row > 0
-            && old_row <= viewport.height
-            && new_row > 0
-            && new_row <= viewport.height
-        {
-            clear_and_write_command_row(
-                old_row,
-                command_display,
-                &indexes_to_display[*selected_index],
-                false,
-                None,
-            )?;
-
-            clear_and_write_command_row(
-                new_row,
-                command_display,
-                &indexes_to_display[new_index],
-                true,
-                None,
-            )?;
-        } else {
-            // If either row isn't visible, we need a full redraw
-            *should_reprint = true;
-        }
-    }
-
-    *selected_index = new_index;
-    *typed_index = selected_index.to_string();
-
-    Ok(())
+    ))
 }
 
 /// Print the header for the command selection UI
-fn print_header(
-    header_mode: &DisplayMode,
-    selected_index: usize,
-    command_display_count: usize,
-) -> Result<()> {
+fn print_header(ui_state: &UiState, command_display_count: usize) -> Result<()> {
     let mut stdout = stdout();
     let (width, _) = terminal::size()?;
 
@@ -440,12 +408,12 @@ fn print_header(
 
     let left_padding = " ".repeat(left_padding_size);
 
-    let instructions = if header_mode.is_filtering {
+    let instructions = if ui_state.is_filtering {
         "<esc>: Stop Filtering".to_string()
     } else {
         format!(
             "/: Begin Filtering   |   {}/{}   |   q: Quit",
-            pad_to_width_of(selected_index + 1, command_display_count),
+            pad_to_width_of(ui_state.selected_index + 1, command_display_count),
             command_display_count
         )
     };
@@ -541,19 +509,20 @@ fn clear_and_write_command_row(
         SetBackgroundColor(Reset),
         SetForegroundColor(Reset),
     )?;
-    stdout.flush()?;
+    //stdout.flush()?;
 
     Ok(())
 }
 
 /// Print all commands with the selected one highlighted
 fn print_commands_with_selection(
+    ui_state: &UiState,
     commands_to_display: &HashMap<CommandIndex, CommandForDisplay>,
     indexes_to_display: &[CommandIndex],
-    selected_index: usize,
-    viewport: &ViewportState,
 ) -> Result<()> {
     let mut stdout = stdout();
+
+    let viewport = &ui_state.viewport;
 
     let visible_commands = indexes_to_display
         .iter()
@@ -561,7 +530,7 @@ fn print_commands_with_selection(
         .take(viewport.height as usize);
 
     for (i, index) in visible_commands.enumerate() {
-        let is_selected = i + viewport.offset == selected_index;
+        let is_selected = i + viewport.offset == ui_state.selected_index;
 
         clear_and_write_command_row(
             i as u16 + 1,
@@ -573,55 +542,52 @@ fn print_commands_with_selection(
         queue!(stdout, cursor::MoveToNextLine(1))?;
     }
 
-    if let Err(e) = stdout.flush() {
+    /*if let Err(e) = stdout.flush() {
         return Err(Error::Stdio(e));
-    }
+    }*/
 
     Ok(())
 }
 
 /// Move the selected index in the given direction
 fn move_selected_index(
-    current_index: usize,
-    viewport: &mut ViewportState,
+    ui_state: &UiState,
     commands_to_display_length: usize,
     direction: Option<&CycleDirection>,
-) -> (usize, bool) {
+) -> UiState {
     if commands_to_display_length == 0 {
-        return (0, false);
+        return ui_state.clone();
     }
 
-    let mut new_index = current_index;
-    let mut viewport_changed = false;
+    let mut new_index = ui_state.selected_index;
+    let mut ui_state = ui_state.clone();
 
     match direction {
         Some(Up) => {
             if new_index == 0 {
                 new_index = commands_to_display_length - 1;
-                viewport.offset = new_index.saturating_sub(viewport.height as usize - 1);
-                viewport_changed = true;
+                ui_state.viewport.offset =
+                    new_index.saturating_sub(ui_state.viewport.height as usize - 1);
             } else {
                 new_index -= 1;
-                if new_index < viewport.offset {
-                    viewport.offset = new_index;
-                    viewport_changed = true;
+                if new_index < ui_state.viewport.offset {
+                    ui_state.viewport.offset = new_index;
                 }
             }
         }
         Some(Down) => {
             new_index = (new_index + 1) % commands_to_display_length;
-            if new_index < current_index {
-                viewport.offset = 0;
-                viewport_changed = true;
-            } else if new_index >= viewport.offset + viewport.height as usize {
-                viewport.offset = new_index - viewport.height as usize + 1;
-                viewport_changed = true;
+            if new_index < ui_state.selected_index {
+                ui_state.viewport.offset = 0;
+            } else if new_index >= ui_state.viewport.offset + ui_state.viewport.height as usize {
+                ui_state.viewport.offset = new_index - ui_state.viewport.height as usize + 1;
             }
         }
         None => {}
     }
 
-    (new_index, viewport_changed)
+    ui_state.selected_index = new_index;
+    ui_state
 }
 
 /// Filter the displayed command indexes based on a predicate

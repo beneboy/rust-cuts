@@ -67,6 +67,7 @@ impl CommandIndex {
 }
 
 /// State for the UI viewport
+#[derive(Clone, PartialEq)]
 pub struct ViewportState {
     pub offset: usize,
     pub height: u16,
@@ -76,4 +77,12 @@ pub struct ViewportState {
 /// Mode for the display UI
 pub struct DisplayMode {
     pub is_filtering: bool,
+}
+
+#[derive(Clone, PartialEq)]
+pub struct UiState {
+    pub selected_index: usize,
+    pub viewport: ViewportState,
+    pub is_filtering: bool,
+    pub filter_text: String,
 }
