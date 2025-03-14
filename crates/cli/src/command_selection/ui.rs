@@ -119,7 +119,6 @@ pub fn prompt_for_command_choice(
         filter_displayed_indexes(&matcher, &command_display, &ui_state.filter_text);
 
     let mut down_row: Option<u16> = None;
-    let mut index_change_direction: Option<CycleDirection> = None;
 
     let mut new_ui_state = Some(ui_state.clone());
 
@@ -137,10 +136,13 @@ pub fn prompt_for_command_choice(
         force_initial_draw = false;
 
         if should_redraw {
-            indexes_to_display = filter_displayed_indexes(&matcher, &command_display, &ui_state.filter_text);
 
             // Get the current state to work with (from new_ui_state, which we know exists now)
             let current_ui_state = new_ui_state.unwrap();
+
+            if ui_state.filter_text != current_ui_state.filter_text {
+                indexes_to_display = filter_displayed_indexes(&matcher, &command_display, &current_ui_state.filter_text);
+            }
 
             redraw_ui(&current_ui_state, &indexes_to_display, &command_display)?;
 
@@ -181,7 +183,7 @@ pub fn prompt_for_command_choice(
                     }
                 }
                 Event::Key(key_event) => {
-                    let (command_choice, new_state, new_direction) =
+                    let (new_state, command_choice) =
                         handle_key_event(key_event, &ui_state, &indexes_to_display, last_command)?;
 
                     if let Some(choice) = command_choice {
@@ -192,9 +194,6 @@ pub fn prompt_for_command_choice(
                         new_ui_state = Some(state);
                     }
 
-                    if let Some(dir) = new_direction {
-                        index_change_direction = Some(dir);
-                    }
                 }
                 Event::Resize(width, height) => {
                     new_ui_state =
@@ -203,14 +202,6 @@ pub fn prompt_for_command_choice(
                 Event::FocusGained => {}
                 Event::FocusLost => {}
                 Event::Paste(_) => {}
-            }
-
-            if let Some(direction) = index_change_direction.take() {
-                new_ui_state = Some(move_selected_index(
-                    &ui_state,
-                    indexes_to_display.len(),
-                    &direction,
-                ));
             }
         }
     }
@@ -223,32 +214,30 @@ fn handle_key_event(
     indexes_to_display: &[CommandIndex],
     last_command: Option<&CommandExecutionTemplate>,
 ) -> Result<(
-    Option<CommandChoice>,
     Option<UiState>,
-    Option<CycleDirection>,
+    Option<CommandChoice>,
 )> {
-    // Initialize with no changes
-    let mut new_state = None;
-
     match key_event.code {
         KeyCode::Up | KeyCode::Down => {
             let direction = if key_event.code == KeyCode::Up {
-                Some(Up)
+                Up
             } else {
-                Some(Down)
+                Down
             };
-            Ok((None, new_state, direction))
+
+            let new_ui_state = move_selected_index(ui_state, indexes_to_display.len(), &direction);
+
+            Ok(( Some(new_ui_state), None))
         }
         KeyCode::Enter => {
             if let Some(command_index) = indexes_to_display.get(ui_state.selected_index) {
                 match command_index {
-                    Normal(i) => return Ok((Some(CommandChoice::Index(*i)), None, None)),
+                    Normal(i) => return Ok((None, Some(CommandChoice::Index(*i)))),
                     CommandIndex::Rerun => {
                         if let Some(last_command) = last_command {
                             return Ok((
+                                None,
                                 Some(CommandChoice::Rerun(last_command.clone())),
-                                None,
-                                None,
                             ));
                         };
                     }
@@ -257,49 +246,47 @@ fn handle_key_event(
                 execute!(stdout(), Print("\x07"))?;
                 stdout().flush()?;
             }
-            Ok((None, None, None))
+            Ok((None, None))
         }
         KeyCode::Backspace => {
             if !ui_state.filter_text.is_empty() {
-                // Create a clone of the current state
                 let mut updated_state = ui_state.clone();
 
                 // Remove the last character from the filter text
                 updated_state.filter_text.pop();
 
-                // Return the new state
-                new_state = Some(updated_state);
-                return Ok((None, new_state, None));
+                return Ok((Some(updated_state), None));
             }
-            Ok((None, None, None))
+            Ok((None, None))
         }
-        KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
-            Ok((Some(CommandChoice::Quit), None, None))
+        KeyCode::Char('c') if key_event.modifiers == KeyModifiers::CONTROL => {
+            // Handle Ctrl-C to quit
+            Ok((None, Some(CommandChoice::Quit)))
         }
         KeyCode::Char(c) if ui_state.is_filtering => {
             let mut new_state = ui_state.clone();
             new_state.filter_text.push(c);
-            Ok((None, Some(new_state), None))
+            Ok((Some(new_state), None))
         }
         KeyCode::Esc if ui_state.is_filtering => {
             let mut updated_state = ui_state.clone();
             updated_state.is_filtering = false;
             updated_state.filter_text = "".to_string();
-            Ok((None, Some(updated_state), None))
+            Ok((Some(updated_state), None))
         }
         KeyCode::Char('/') => {
             let mut updated_state = ui_state.clone();
             updated_state.is_filtering = true;
-            Ok((None, Some(updated_state), None))
+            Ok((Some(updated_state), None))
         }
-        KeyCode::Char('q') => Ok((Some(CommandChoice::Quit), None, None)),
+        KeyCode::Char('q') => Ok(( None, Some(CommandChoice::Quit))),
         KeyCode::Char(LAST_COMMAND_OPTION) => {
             if let Some(last_command) = last_command {
-                return Ok((Some(CommandChoice::Rerun(last_command.clone())), None, None));
+                return Ok((None, Some(CommandChoice::Rerun(last_command.clone()))));
             }
-            Ok((None, None, None))
+            Ok((None, None))
         }
-        _ => Ok((None, None, None)),
+        _ => Ok((None, None)),
     }
 }
 

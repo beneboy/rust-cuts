@@ -132,6 +132,8 @@ fn execute() -> Result<()> {
         &args.get_parameter_mode()?,
     );
 
+    println!("Executing command: {}", execution_context);
+    
     loop {
         // Handle parameters based on our current state
         if tokens.is_empty() {
@@ -235,7 +237,7 @@ fn get_selected_option(
             stdout,
             cursor::MoveToColumn(0),
             cursor::MoveToRow(height),
-            terminal::Clear(ClearType::CurrentLine)
+            Clear(ClearType::CurrentLine)
         )?;
         disable_raw_mode()?;
         stdout.flush()?;
