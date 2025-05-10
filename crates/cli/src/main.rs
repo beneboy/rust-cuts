@@ -132,8 +132,6 @@ fn execute() -> Result<()> {
         &args.get_parameter_mode()?,
     );
 
-    println!("Executing command: {}", execution_context);
-    
     loop {
         // Handle parameters based on our current state
         if tokens.is_empty() {
