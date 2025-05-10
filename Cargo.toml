@@ -2,6 +2,6 @@
 members = [
     "crates/core",
     "crates/cli",
-    "crates/gui"
+    # "crates/gui"  # Disable until it's more complete
 ]
 resolver = "2"
