@@ -2,11 +2,17 @@
 
 ## Supercharged terminal commands with templating and context
 
-## Why Rust Cuts?
+**Stop fighting your shell history.** Turn complex, hard-to-remember commands into simple, reusable templates with interactive prompts.
 
-- **Stop fighting your shell history.** Run complex commands with a single keystroke
-- **Templated commands with prompts.** No more editing long commands by hand
-- **Context-aware execution.** Automatically set working directory and environment variables
+## What Makes Rust Cuts Different
+
+- 🎯 Guided parameter input means no more remembering syntax or editing long commands
+- 🎨 Full context control gives each command its own working directory and environment  
+- 📚 Instant fuzzy search finds any command in milliseconds, no matter how many you have
+- 🔧 Templates include default values, descriptions, and validation
+- ⚡ Modern terminal UX built for the way developers actually work today
+
+The key insight: **most command-line tools assume you remember everything**. Rust Cuts assumes you don't, and that's perfectly fine.
 
 ## What?
 
@@ -29,6 +35,181 @@ $ cargo install --path .
 
 Next create the directory `~/.rust-cuts/` and definition YAML file `~/.rust-cuts/commands.yml`.
 See [sample-commands.yml](./sample-commands.yml) for an example.
+
+## Real-World Examples
+
+### 🐳 Docker Development Workflow
+
+```yaml
+- id: "docker-dev"
+  description: "Start development environment with hot reload"
+  command: ["docker", "compose", "-f", "docker-compose.{env}.yml", "up", "--build"]
+  working_directory: "~/projects/{project}"
+  parameters:
+    - id: "project"
+      default: "my-app"
+      description: "Project directory name"
+    - id: "env"
+      default: "dev"
+      description: "Environment (dev/staging/prod)"
+  environment:
+    COMPOSE_PROJECT_NAME: "{project}-{env}"
+
+- id: "docker-logs"
+  description: "View logs for a specific service"
+  command: ["docker", "compose", "logs", "-f", "--tail=100", "{service}"]
+  working_directory: "~/projects/{project}"
+  parameters:
+    - id: "project"
+      default: "my-app"
+    - id: "service"
+      description: "Service name (web, db, redis, etc.)"
+```
+
+### 🚀 Kubernetes Operations
+
+```yaml
+- id: "k8s-deploy"
+  description: "Deploy application to Kubernetes"
+  command: ["kubectl", "apply", "-f", "k8s/{env}/", "--namespace", "{namespace}"]
+  working_directory: "~/projects/{app}"
+  parameters:
+    - id: "app"
+      default: "my-service"
+    - id: "env"
+      default: "staging"
+      description: "Environment (dev/staging/prod)"
+    - id: "namespace"
+      default: "default"
+  environment:
+    KUBECONFIG: "~/.kube/config-{env}"
+
+- id: "k8s-logs"
+  description: "Stream logs from Kubernetes pods"
+  command: ["kubectl", "logs", "-f", "deployment/{service}", "--namespace", "{namespace}"]
+  parameters:
+    - id: "service"
+      description: "Service deployment name"
+    - id: "namespace"
+      default: "default"
+  environment:
+    KUBECONFIG: "~/.kube/config"
+```
+
+### 🗄️ Database Operations
+
+```yaml
+- id: "db-backup"
+  description: "Backup database with timestamp"
+  command: ["pg_dump", "-h", "{host}", "-U", "{user}", "-d", "{database}", "|", "gzip", ">", "backup_{database}_$(date +%Y%m%d_%H%M%S).sql.gz"]
+  parameters:
+    - id: "host"
+      default: "localhost"
+    - id: "user"
+      default: "postgres"
+    - id: "database"
+      description: "Database name to backup"
+  environment:
+    PGPASSWORD: "{password}"
+
+- id: "db-connect"
+  description: "Connect to database with environment-specific credentials"
+  command: ["psql", "-h", "{host}", "-U", "{user}", "-d", "{database}"]
+  parameters:
+    - id: "env"
+      default: "dev"
+      description: "Environment (dev/staging/prod)"
+  environment:
+    PGHOST: "db-{env}.company.com"
+    PGUSER: "app_user"
+    PGDATABASE: "myapp_{env}"
+```
+
+### 🔧 Development Tools
+
+```yaml
+- id: "test-watch"
+  description: "Run tests in watch mode for specific module"
+  command: ["cargo", "watch", "-x", "test {module} -- --nocapture"]
+  working_directory: "~/rust-projects/{project}"
+  parameters:
+    - id: "project"
+      default: "current-project"
+    - id: "module"
+      default: ""
+      description: "Specific test module (optional)"
+
+- id: "lint-fix"
+  description: "Run linter and auto-fix issues"
+  command: ["npm", "run", "lint:fix", "--", "--ext", ".{ext}", "src/"]
+  working_directory: "~/projects/{project}"
+  parameters:
+    - id: "project"
+      description: "Project directory"
+    - id: "ext"
+      default: "js,ts,jsx,tsx"
+      description: "File extensions to lint"
+  environment:
+    NODE_ENV: "development"
+```
+
+### ☁️ AWS/Cloud Operations
+
+```yaml
+- id: "aws-deploy"
+  description: "Deploy to AWS with specific profile and region"
+  command: ["aws", "s3", "sync", "dist/", "s3://{bucket}/", "--delete", "--region", "{region}"]
+  working_directory: "~/projects/{project}"
+  parameters:
+    - id: "project"
+      description: "Project to deploy"
+    - id: "bucket"
+      description: "S3 bucket name"
+    - id: "region"
+      default: "us-east-1"
+  environment:
+    AWS_PROFILE: "{env}"
+    AWS_DEFAULT_REGION: "{region}"
+
+- id: "ssh-ec2"
+  description: "SSH to EC2 instance by name tag"
+  command: ["aws", "ec2", "describe-instances", "--filters", "Name=tag:Name,Values={name}", "--query", "'Instances[0].PublicIpAddress'", "--output", "text", "|", "xargs", "-I", "{}", "ssh", "-i", "~/.ssh/{key}.pem", "{user}@{}"]
+  parameters:
+    - id: "name"
+      description: "EC2 instance name tag"
+    - id: "user"
+      default: "ubuntu"
+    - id: "key"
+      default: "my-aws-key"
+  environment:
+    AWS_PROFILE: "production"
+```
+
+### 🔄 Git Workflow Automation
+
+```yaml
+- id: "git-feature"
+  description: "Create and switch to feature branch"
+  command: ["git", "checkout", "-b", "feature/{ticket}-{description}", "develop"]
+  working_directory: "~/projects/{project}"
+  parameters:
+    - id: "project"
+      default: "current"
+    - id: "ticket"
+      description: "Ticket/issue number"
+    - id: "description"
+      description: "Brief feature description (use-dashes)"
+
+- id: "git-release"
+  description: "Create release branch and push"
+  command: ["git", "checkout", "-b", "release/{version}", "develop", "&&", "git", "push", "-u", "origin", "release/{version}"]
+  working_directory: "~/projects/{project}"
+  parameters:
+    - id: "project"
+      default: "current"
+    - id: "version"
+      description: "Release version (e.g., 1.2.0)"
+```
 
 ## Simple Example
 
@@ -259,7 +440,95 @@ They are case-insensitive.
 - `White`
 - `Grey`
 
-# Running Subprojects
+## The Problem with Static Commands
 
-GUI: cargo run -p rust-cuts-gui
-CLI: cargo run -p rust-cuts-cli
+Most developers end up with something like this:
+
+```bash
+# Your .bashrc file grows and grows...
+alias k8s-deploy-staging="kubectl apply -f k8s/staging/ --namespace staging"
+alias k8s-deploy-prod="kubectl apply -f k8s/prod/ --namespace prod"  
+alias k8s-deploy-dev="kubectl apply -f k8s/dev/ --namespace dev"
+alias docker-logs-web="docker compose logs -f web"
+alias docker-logs-db="docker compose logs -f db"
+alias docker-logs-redis="docker compose logs -f redis"
+# ...and 47 more variations you'll never remember
+```
+
+## The Rust Cuts Approach
+
+Instead of memorizing dozens of static commands, define flexible templates:
+
+```yaml
+- id: "k8s-deploy"
+  description: "Deploy to any environment"
+  command: ["kubectl", "apply", "-f", "k8s/{env}/", "--namespace", "{env}"]
+  parameters:
+    - id: "env"
+      description: "Environment (staging/prod/dev)"
+
+- id: "docker-logs"
+  description: "View logs for any service"  
+  command: ["docker", "compose", "logs", "-f", "{service}"]
+  parameters:
+    - id: "service"
+      description: "Service name"
+```
+
+Now `rc` gives you an interactive menu, and you just fill in the blanks. **One template handles infinite variations.**
+
+## Advanced Usage
+
+### Direct Command Execution
+```bash
+# Run specific command by ID
+rc k8s-deploy
+
+# With parameters (no prompts)
+rc k8s-deploy -p env=staging
+
+# Positional parameters  
+rc docker-logs web
+
+# Dry run to preview
+rc --dry-run k8s-deploy
+
+# Force execution (skip confirmation)
+rc --force docker-logs web
+
+# Rerun last command
+rc --rerun-last-command
+# or simply
+rc -r
+```
+
+### Command Line Integration
+```bash
+# Use in scripts
+if rc --dry-run deploy-prod | grep -q "production"; then
+    echo "About to deploy to production!"
+    rc --force deploy-prod
+fi
+
+# Chain with other commands
+rc build-docker && rc deploy-staging && rc run-tests
+```
+
+# Development
+
+## Running Subprojects
+
+```bash
+# Run the CLI tool
+cargo run -p rust-cuts-cli
+
+# Run the GUI (when enabled)  
+cargo run -p rust-cuts-gui
+
+# Run all tests
+cargo test
+
+# Check code quality
+cargo clippy -- -D warnings
+cargo fmt --check
+```

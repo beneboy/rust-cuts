@@ -1,15 +1,121 @@
-# Move this to ~/rust-cuts/commands.yml
-- name: "Do hello world!"
+# Sample Commands for Rust Cuts
+# Copy this to ~/.rust-cuts/commands.yml and customize for your needs
+
+# Basic examples
+- id: "hello"
+  description: "Simple hello world example"
   command: ["echo", "Hello world!"]
-- name: "SSH to EC2"
-  command: ["ssh", "-i", "~/path/to/aws-key.pem", "{username}@{host}"]
+
+- id: "list-files"
+  description: "List files with details"
+  command: ["ls", "-la", "{path}"]
   parameters:
-    - id: "username"
-      default: "ubuntu"
-- name: "Build project"
-  command: [ "make", "build" ]
-  working_directory: "~/projects/rust-cuts/"
-- name: "List objects in S3 bucket"
-  command: ["aws", "s3", "ls", "{bucket}"]
+    - id: "path"
+      default: "."
+      description: "Directory to list"
+
+# Development workflow examples
+- id: "docker-dev"
+  description: "Start development environment"
+  command: ["docker", "compose", "-f", "docker-compose.{env}.yml", "up", "--build"]
+  working_directory: "~/projects/{project}"
+  parameters:
+    - id: "project"
+      default: "my-app"
+      description: "Project directory name"
+    - id: "env"
+      default: "dev"
+      description: "Environment (dev/staging/prod)"
   environment:
-    AWS_PROFILE: dev
+    COMPOSE_PROJECT_NAME: "{project}-{env}"
+
+- id: "test-watch"
+  description: "Run tests in watch mode"
+  command: ["cargo", "watch", "-x", "test {module}"]
+  working_directory: "~/rust-projects/{project}"
+  parameters:
+    - id: "project"
+      default: "current-project"
+    - id: "module"
+      default: ""
+      description: "Specific test module (optional)"
+
+# Database operations
+- id: "db-backup"
+  description: "Backup PostgreSQL database"
+  command: ["pg_dump", "-h", "{host}", "-U", "{user}", "-d", "{database}", ">", "backup_{database}_$(date +%Y%m%d).sql"]
+  parameters:
+    - id: "host"
+      default: "localhost"
+    - id: "user"
+      default: "postgres"
+    - id: "database"
+      description: "Database name to backup"
+  environment:
+    PGPASSWORD: "{password}"
+
+# Cloud/DevOps examples
+- id: "k8s-deploy"
+  description: "Deploy to Kubernetes"
+  command: ["kubectl", "apply", "-f", "k8s/{env}/", "--namespace", "{namespace}"]
+  working_directory: "~/projects/{app}"
+  parameters:
+    - id: "app"
+      default: "my-service"
+    - id: "env"
+      default: "staging"
+      description: "Environment (dev/staging/prod)"
+    - id: "namespace"
+      default: "default"
+  environment:
+    KUBECONFIG: "~/.kube/config-{env}"
+
+- id: "ssh-server"
+  description: "SSH to server with key"
+  command: ["ssh", "-i", "~/.ssh/{key}.pem", "{user}@{host}"]
+  parameters:
+    - id: "user"
+      default: "ubuntu"
+    - id: "host"
+      description: "Server hostname or IP"
+    - id: "key"
+      default: "my-key"
+      description: "SSH key name (without .pem)"
+
+# Git workflow
+- id: "git-feature"
+  description: "Create feature branch"
+  command: ["git", "checkout", "-b", "feature/{ticket}-{description}", "develop"]
+  working_directory: "~/projects/{project}"
+  parameters:
+    - id: "project"
+      default: "current"
+    - id: "ticket"
+      description: "Ticket/issue number"
+    - id: "description"
+      description: "Brief feature description (use-dashes)"
+
+# AWS operations
+- id: "aws-deploy"
+  description: "Deploy to S3 bucket"
+  command: ["aws", "s3", "sync", "dist/", "s3://{bucket}/", "--delete"]
+  working_directory: "~/projects/{project}"
+  parameters:
+    - id: "project"
+      description: "Project to deploy"
+    - id: "bucket"
+      description: "S3 bucket name"
+  environment:
+    AWS_PROFILE: "{env}"
+    AWS_DEFAULT_REGION: "us-east-1"
+
+# Colorized commands for better visibility
+- id: "important-deploy"
+  description: "Production deployment (use with caution!)"
+  command: ["kubectl", "apply", "-f", "production/", "--namespace", "prod"]
+  working_directory: "~/k8s-configs"
+  metadata:
+    background_color:
+      name: "red"
+    foreground_color:
+      name: "white"
