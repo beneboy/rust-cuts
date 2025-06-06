@@ -26,7 +26,11 @@ pub enum ParameterMode {
 /// to validate and return their parameter mode.
 pub trait ParameterModeProvider {
     /// Validates that named and positional parameters aren't mixed
-    /// and returns the appropriate ParameterMode
+    /// and returns the appropriate `ParameterMode`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if named and positional parameters are mixed.
     fn get_parameter_mode(&self) -> Result<ParameterMode>;
 }
 
@@ -145,7 +149,7 @@ mod tests {
     #[test]
     fn test_parameter_mode_debug_formatting() {
         let named = ParameterMode::Named(vec!["test=value".to_string()]);
-        let debug_str = format!("{:?}", named);
+        let debug_str = format!("{named:?}");
         assert!(debug_str.contains("Named"));
         assert!(debug_str.contains("test=value"));
     }

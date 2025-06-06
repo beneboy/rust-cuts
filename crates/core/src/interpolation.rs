@@ -5,6 +5,7 @@ use leon::Template;
 use crate::command_definitions::ParameterDefinition;
 use crate::error::Result;
 
+#[must_use]
 pub fn build_parameter_lookup(
     definitions: &Option<Vec<ParameterDefinition>>,
 ) -> Option<HashMap<String, ParameterDefinition>> {
@@ -20,8 +21,13 @@ pub fn build_parameter_lookup(
     }
 }
 
-pub fn interpolate_command(
-    context: &HashMap<String, String>,
+/// Interpolates template commands with provided context values.
+///
+/// # Errors
+///
+/// Returns an error if template rendering fails.
+pub fn interpolate_command<S: ::std::hash::BuildHasher>(
+    context: &HashMap<String, String, S>,
     templates: &[Template],
 ) -> Result<Vec<String>> {
     let mut interpolated_arguments: Vec<String> = Vec::new();

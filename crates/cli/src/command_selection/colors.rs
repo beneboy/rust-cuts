@@ -4,6 +4,12 @@ use rust_cuts_core::error::{Error, Result};
 
 /// Trait for converting color definitions to terminal colors
 pub trait AsTermColor {
+    /// Converts a color definition to a crossterm color.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if multiple color specification methods are used or if
+    /// an unknown color name is provided.
     fn as_crossterm_color(&self) -> Result<Option<Color>>;
 }
 
@@ -48,7 +54,11 @@ impl AsTermColor for ColorDefinition {
     }
 }
 
-/// Helper function to extract color from metadata
+/// Helper function to extract color from metadata.
+///
+/// # Errors
+///
+/// Returns an error if the color definition is invalid.
 pub fn color_from_metadata_attribute(
     color_definition: &Option<ColorDefinition>,
 ) -> Result<Option<Color>> {
@@ -58,9 +68,20 @@ pub fn color_from_metadata_attribute(
     }
 }
 
-/// Trait for accessing CommandDefinition colors
+/// Trait for accessing `CommandDefinition` colors
 pub trait CommandDefinitionColor {
+    /// Gets the foreground color for the command.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the color definition is invalid.
     fn foreground_color(&self) -> Result<Option<Color>>;
+    
+    /// Gets the background color for the command.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the color definition is invalid.
     fn background_color(&self) -> Result<Option<Color>>;
 }
 

@@ -45,7 +45,7 @@ fn test_complete_command_configuration_workflow() {
 "#;
 
     let mut temp_file = NamedTempFile::new().unwrap();
-    write!(temp_file, "{}", yaml_content).unwrap();
+    write!(temp_file, "{yaml_content}").unwrap();
     let temp_path = temp_file.path().to_str().unwrap().to_string();
 
     // Load the command definitions
@@ -109,7 +109,7 @@ fn test_template_variable_extraction_workflow() {
 "#;
 
     let mut temp_file = NamedTempFile::new().unwrap();
-    write!(temp_file, "{}", yaml_content).unwrap();
+    write!(temp_file, "{yaml_content}").unwrap();
     let temp_path = temp_file.path().to_str().unwrap().to_string();
 
     let commands = get_command_definitions(&temp_path).unwrap();
@@ -220,12 +220,11 @@ fn test_command_definition_to_execution_template_workflow() {
     let mut env = HashMap::new();
     env.insert("TEST_ENV".to_string(), "test_value".to_string());
 
-    let mut params = Vec::new();
-    params.push(ParameterDefinition {
+    let params = vec![ParameterDefinition {
         id: "target".to_string(),
         default: Some("localhost".to_string()),
         description: Some("Target host".to_string()),
-    });
+    }];
 
     let cmd_def = CommandDefinition {
         command: vec![
@@ -257,7 +256,7 @@ fn test_error_handling_workflow() {
     // Test empty configuration
     let empty_yaml = "[]";
     let mut temp_file = NamedTempFile::new().unwrap();
-    write!(temp_file, "{}", empty_yaml).unwrap();
+    write!(temp_file, "{empty_yaml}").unwrap();
     let temp_path = temp_file.path().to_str().unwrap().to_string();
 
     let result = get_command_definitions(&temp_path);
@@ -266,7 +265,7 @@ fn test_error_handling_workflow() {
     // Test invalid YAML syntax
     let invalid_yaml = "invalid: yaml: [structure";
     let mut temp_file2 = NamedTempFile::new().unwrap();
-    write!(temp_file2, "{}", invalid_yaml).unwrap();
+    write!(temp_file2, "{invalid_yaml}").unwrap();
     let temp_path2 = temp_file2.path().to_str().unwrap().to_string();
 
     let result2 = get_command_definitions(&temp_path2);
@@ -280,7 +279,7 @@ fn test_error_handling_workflow() {
   command: ["echo", "second"]
 "#;
     let mut temp_file3 = NamedTempFile::new().unwrap();
-    write!(temp_file3, "{}", duplicate_ids_yaml).unwrap();
+    write!(temp_file3, "{duplicate_ids_yaml}").unwrap();
     let temp_path3 = temp_file3.path().to_str().unwrap().to_string();
 
     let result3 = get_command_definitions(&temp_path3);
@@ -294,7 +293,7 @@ fn test_error_handling_workflow() {
     - id: "missing_param"
 "#;
     let mut temp_file4 = NamedTempFile::new().unwrap();
-    write!(temp_file4, "{}", missing_param_yaml).unwrap();
+    write!(temp_file4, "{missing_param_yaml}").unwrap();
     let temp_path4 = temp_file4.path().to_str().unwrap().to_string();
 
     let result4 = get_command_definitions(&temp_path4);
@@ -314,7 +313,7 @@ fn test_display_formatting_workflow() {
         environment: None,
         metadata: None,
     };
-    assert_eq!(format!("{}", cmd1), "list_files (List all files)");
+    assert_eq!(format!("{cmd1}"), "list_files (List all files)");
 
     // Test command with only ID
     let cmd2 = CommandDefinition {
@@ -326,7 +325,7 @@ fn test_display_formatting_workflow() {
         environment: None,
         metadata: None,
     };
-    assert_eq!(format!("{}", cmd2), "show_dir");
+    assert_eq!(format!("{cmd2}"), "show_dir");
 
     // Test command with only description
     let cmd3 = CommandDefinition {
@@ -338,7 +337,7 @@ fn test_display_formatting_workflow() {
         environment: None,
         metadata: None,
     };
-    assert_eq!(format!("{}", cmd3), "Show current date");
+    assert_eq!(format!("{cmd3}"), "Show current date");
 
     // Test command with neither ID nor description (fallback to command)
     let cmd4 = CommandDefinition {
@@ -350,7 +349,7 @@ fn test_display_formatting_workflow() {
         environment: None,
         metadata: None,
     };
-    assert_eq!(format!("{}", cmd4), "whoami");
+    assert_eq!(format!("{cmd4}"), "whoami");
 
     // Test execution template display
     let exec_template = CommandExecutionTemplate {
@@ -359,5 +358,5 @@ fn test_display_formatting_workflow() {
         template_context: None,
         environment: None,
     };
-    assert_eq!(format!("{}", exec_template), "git status");
+    assert_eq!(format!("{exec_template}"), "git status");
 }

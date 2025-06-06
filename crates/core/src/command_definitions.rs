@@ -39,7 +39,7 @@ impl Display for ParameterDefinition {
 
         // Add description if present
         if let Some(desc) = &self.description {
-            write!(formatter, " ({})", desc)?;
+            write!(formatter, " ({desc})")?;
         }
 
         Ok(())
@@ -49,7 +49,7 @@ impl Display for ParameterDefinition {
 /// Defines a color that can be used for command styling.
 ///
 /// Colors can be specified using RGB values, ANSI codes, or named colors.
-/// Only one color specification method should be used per ColorDefinition.
+/// Only one color specification method should be used per `ColorDefinition`.
 #[derive(Deserialize, Debug, Clone)]
 pub struct ColorDefinition {
     /// RGB color specification as (red, green, blue) with values 0-255
@@ -162,7 +162,7 @@ pub trait TemplateParser {
     /// Returns an error if template parsing fails.
     fn get_ordered_context_variables(&self) -> Result<IndexSet<String>> {
         let mut variables: IndexSet<String> = IndexSet::new();
-        for template in self.get_templates()?.iter() {
+        for template in &self.get_templates()? {
             for item in template.items.iter() {
                 match item {
                     Item::Text(_) => {
@@ -170,7 +170,7 @@ pub trait TemplateParser {
                     }
                     Item::Key(k) => {
                         // IndexSet keeps order, but won't insert if the value exists
-                        variables.insert(k.to_string());
+                        variables.insert((*k).to_string());
                     }
                 }
             }
@@ -196,7 +196,7 @@ impl Display for CommandDefinition {
         match (&self.id, &self.description) {
             (Some(id), Some(desc)) => {
                 // Both id and description exist
-                write!(formatter, "{} ({})", id, desc)
+                write!(formatter, "{id} ({desc})")
             }
             (Some(id), None) => {
                 // Only id exists
@@ -215,14 +215,15 @@ impl Display for CommandDefinition {
 }
 
 impl CommandExecutionTemplate {
-    /// Creates a new CommandExecutionTemplate from a CommandDefinition.
+    /// Creates a new `CommandExecutionTemplate` from a `CommandDefinition`.
     ///
     /// This copies the essential execution information from a command definition
-    /// while leaving the template_context empty for later parameter resolution.
+    /// while leaving the `template_context` empty for later parameter resolution.
     ///
     /// # Arguments
     ///
     /// * `value` - The command definition to convert
+    #[must_use]
     pub fn from_command_definition(value: &CommandDefinition) -> Self {
         Self {
             command: value.command.clone(),
@@ -275,7 +276,7 @@ mod tests {
     #[test]
     fn test_parameter_definition_display() {
         let param = create_test_parameter();
-        let display_str = format!("{}", param);
+        let display_str = format!("{param}");
         assert_eq!(display_str, "`test_param` (Test parameter)");
     }
 
@@ -286,14 +287,14 @@ mod tests {
             default: None,
             description: None,
         };
-        let display_str = format!("{}", param);
+        let display_str = format!("{param}");
         assert_eq!(display_str, "`no_desc`");
     }
 
     #[test]
     fn test_command_definition_display_with_id_and_description() {
         let cmd = create_test_command();
-        let display_str = format!("{}", cmd);
+        let display_str = format!("{cmd}");
         assert_eq!(display_str, "test_command (Test command)");
     }
 
@@ -301,7 +302,7 @@ mod tests {
     fn test_command_definition_display_id_only() {
         let mut cmd = create_test_command();
         cmd.description = None;
-        let display_str = format!("{}", cmd);
+        let display_str = format!("{cmd}");
         assert_eq!(display_str, "test_command");
     }
 
@@ -309,7 +310,7 @@ mod tests {
     fn test_command_definition_display_description_only() {
         let mut cmd = create_test_command();
         cmd.id = None;
-        let display_str = format!("{}", cmd);
+        let display_str = format!("{cmd}");
         assert_eq!(display_str, "Test command");
     }
 
@@ -318,7 +319,7 @@ mod tests {
         let mut cmd = create_test_command();
         cmd.id = None;
         cmd.description = None;
-        let display_str = format!("{}", cmd);
+        let display_str = format!("{cmd}");
         assert_eq!(display_str, "echo Hello {name}!");
     }
 
@@ -341,7 +342,7 @@ mod tests {
             template_context: None,
             environment: None,
         };
-        let display_str = format!("{}", template);
+        let display_str = format!("{template}");
         assert_eq!(display_str, "ls -la");
     }
 

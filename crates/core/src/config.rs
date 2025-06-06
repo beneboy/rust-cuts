@@ -35,6 +35,7 @@ pub const DEFAULT_SHELL: &str = "/bin/bash";
 /// // Use custom path
 /// let custom_path = get_config_path(&Some("/path/to/config.yml".to_string()));
 /// ```
+#[must_use]
 pub fn get_config_path(config_path_arg: &Option<String>) -> String {
     let config_path = match config_path_arg {
         Some(last_command_path) => last_command_path,
@@ -56,6 +57,7 @@ pub fn get_config_path(config_path_arg: &Option<String>) -> String {
 /// # Returns
 ///
 /// The resolved absolute path to the last command file
+#[must_use]
 pub fn get_last_command_path(last_command_path_arg: &Option<String>) -> String {
     let last_command_path = match last_command_path_arg {
         Some(last_command_path) => last_command_path,
@@ -91,6 +93,7 @@ pub fn get_last_command_path(last_command_path_arg: &Option<String>) -> String {
 /// let none_result = expand_working_directory(&None);
 /// assert!(none_result.is_none());
 /// ```
+#[must_use]
 pub fn expand_working_directory(working_directory: &Option<String>) -> Option<String> {
     if let Some(working_directory) = working_directory {
         return Some({

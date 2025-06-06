@@ -7,11 +7,19 @@ use rust_cuts_core::error::Error::{MissingParameter, ParameterCountMismatch, Par
 use rust_cuts_core::error::Result;
 use std::collections::HashMap;
 
-/// Process command-line parameters based on the parameter mode
+/// Process command-line parameters based on the parameter mode.
 ///
 /// Takes the parameter mode, execution context, and existing parameter definitions,
 /// and returns a map of parameter definitions with values filled from command-line arguments.
-pub fn process_command_line_parameters(
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Template parsing fails
+/// - Parameter format is invalid (for named parameters)
+/// - Parameter count doesn't match template variables (for positional parameters)
+/// - Required parameters are missing
+pub fn process_command_line(
     parameter_mode: ParameterMode,
     execution_template: &CommandExecutionTemplate,
     parameter_definitions: &Option<HashMap<String, ParameterDefinition>>,

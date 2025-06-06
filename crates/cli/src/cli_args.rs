@@ -117,7 +117,7 @@ mod tests {
 
     #[test]
     fn test_args_default_values() {
-        let args = Args::parse_from(&["rc"]);
+        let args = Args::parse_from(["rc"]);
 
         assert!(args.config_path.is_none());
         assert!(args.last_command_path.is_none());
@@ -132,7 +132,7 @@ mod tests {
 
     #[test]
     fn test_args_short_flags() {
-        let args = Args::parse_from(&[
+        let args = Args::parse_from([
             "rc",
             "-c",
             "/custom/config.yml",
@@ -154,7 +154,7 @@ mod tests {
 
     #[test]
     fn test_args_long_flags() {
-        let args = Args::parse_from(&[
+        let args = Args::parse_from([
             "rc",
             "--config-path",
             "/custom/config.yml",
@@ -176,13 +176,13 @@ mod tests {
 
     #[test]
     fn test_args_command_id() {
-        let args = Args::parse_from(&["rc", "my-command"]);
+        let args = Args::parse_from(["rc", "my-command"]);
         assert_eq!(args.command_id_or_index, Some("my-command".to_string()));
     }
 
     #[test]
     fn test_args_named_parameters() {
-        let args = Args::parse_from(&[
+        let args = Args::parse_from([
             "rc",
             "my-command",
             "-p",
@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn test_args_positional_parameters() {
-        let args = Args::parse_from(&["rc", "my-command", "--", "pos1", "pos2", "pos3"]);
+        let args = Args::parse_from(["rc", "my-command", "--", "pos1", "pos2", "pos3"]);
 
         assert_eq!(args.command_id_or_index, Some("my-command".to_string()));
         assert_eq!(args.positional_args.len(), 3);
@@ -210,14 +210,14 @@ mod tests {
 
     #[test]
     fn test_parameter_mode_provider_none() {
-        let args = Args::parse_from(&["rc"]);
+        let args = Args::parse_from(["rc"]);
         let mode = args.get_parameter_mode().unwrap();
         assert_eq!(mode, ParameterMode::None);
     }
 
     #[test]
     fn test_parameter_mode_provider_named() {
-        let args = Args::parse_from(&["rc", "-p", "key=value"]);
+        let args = Args::parse_from(["rc", "-p", "key=value"]);
         let mode = args.get_parameter_mode().unwrap();
         match mode {
             ParameterMode::Named(params) => {
@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn test_parameter_mode_provider_positional() {
         // With trailing_var_arg, first arg goes to command_id_or_index, rest to positional_args
-        let args = Args::parse_from(&["rc", "command", "value1", "value2"]);
+        let args = Args::parse_from(["rc", "command", "value1", "value2"]);
         let mode = args.get_parameter_mode().unwrap();
         match mode {
             ParameterMode::Positional(params) => {

@@ -17,4 +17,4 @@ pub mod validation;
 pub use mode::determine_parameter_mode;
 pub use mode::ParameterMode;
 pub use mode::ParameterModeProvider;
-pub use processing::process_command_line_parameters;
+pub use processing::process_command_line;

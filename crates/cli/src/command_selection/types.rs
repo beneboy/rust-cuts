@@ -47,8 +47,8 @@ pub enum CommandForDisplay {
 impl Display for CommandForDisplay {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            CommandForDisplay::Normal(n) => write!(f, "{}", n),
-            CommandForDisplay::Rerun(r) => write!(f, "{}", r),
+            CommandForDisplay::Normal(n) => write!(f, "{n}"),
+            CommandForDisplay::Rerun(r) => write!(f, "{r}"),
         }
     }
 }
@@ -73,6 +73,7 @@ impl Display for CommandIndex {
 }
 
 impl CommandIndex {
+    #[must_use]
     pub fn compare(&self, other: &Self) -> Ordering {
         match (self, other) {
             (CommandIndex::Normal(i1), CommandIndex::Normal(i2)) => i1.cmp(i2),
@@ -147,7 +148,7 @@ mod tests {
     fn test_command_for_display_normal() {
         let cmd = create_test_command();
         let display_cmd = CommandForDisplay::Normal(cmd.clone());
-        let display_str = format!("{}", display_cmd);
+        let display_str = format!("{display_cmd}");
         assert_eq!(display_str, "test_cmd (Test command)");
     }
 
@@ -155,20 +156,20 @@ mod tests {
     fn test_command_for_display_rerun() {
         let template = create_test_execution_template();
         let display_cmd = CommandForDisplay::Rerun(template);
-        let display_str = format!("{}", display_cmd);
+        let display_str = format!("{display_cmd}");
         assert_eq!(display_str, "ls -la");
     }
 
     #[test]
     fn test_command_index_display() {
         let normal_index = CommandIndex::Normal(0);
-        assert_eq!(format!("{}", normal_index), "1"); // 1-based display
+        assert_eq!(format!("{normal_index}"), "1"); // 1-based display
 
         let normal_index_5 = CommandIndex::Normal(4);
-        assert_eq!(format!("{}", normal_index_5), "5");
+        assert_eq!(format!("{normal_index_5}"), "5");
 
         let rerun_index = CommandIndex::Rerun;
-        assert_eq!(format!("{}", rerun_index), "r");
+        assert_eq!(format!("{rerun_index}"), "r");
     }
 
     #[test]
@@ -192,16 +193,16 @@ mod tests {
 
     #[test]
     fn test_command_index_equality() {
-        let normal_1a = CommandIndex::Normal(1);
-        let normal_1b = CommandIndex::Normal(1);
-        let normal_2 = CommandIndex::Normal(2);
-        let rerun_a = CommandIndex::Rerun;
-        let rerun_b = CommandIndex::Rerun;
+        let normal_first = CommandIndex::Normal(1);
+        let normal_same = CommandIndex::Normal(1);
+        let normal_different = CommandIndex::Normal(2);
+        let rerun_first = CommandIndex::Rerun;
+        let rerun_second = CommandIndex::Rerun;
 
-        assert_eq!(normal_1a, normal_1b);
-        assert_ne!(normal_1a, normal_2);
-        assert_eq!(rerun_a, rerun_b);
-        assert_ne!(normal_1a, rerun_a);
+        assert_eq!(normal_first, normal_same);
+        assert_ne!(normal_first, normal_different);
+        assert_eq!(rerun_first, rerun_second);
+        assert_ne!(normal_first, rerun_first);
     }
 
     #[test]
@@ -261,21 +262,21 @@ mod tests {
             selected_index: 0,
             viewport: viewport.clone(),
             is_filtering: false,
-            filter_text: "".to_string(),
+            filter_text: String::new(),
         };
 
         let ui_state2 = UiState {
             selected_index: 0,
             viewport: viewport.clone(),
             is_filtering: false,
-            filter_text: "".to_string(),
+            filter_text: String::new(),
         };
 
         let ui_state3 = UiState {
             selected_index: 1, // Different selected index
-            viewport: viewport,
+            viewport,
             is_filtering: false,
-            filter_text: "".to_string(),
+            filter_text: String::new(),
         };
 
         assert_eq!(ui_state1, ui_state2);

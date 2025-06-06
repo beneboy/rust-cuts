@@ -15,6 +15,7 @@ use rust_cuts_core::command_definitions::ParameterDefinition;
 ///
 /// Note: When running a rerun, the user can still choose to change parameters
 /// during the run confirmation using the 'c' option.
+#[must_use]
 pub fn should_prompt_for_parameters(
     tokens: &IndexSet<String>,
     filled_parameters: &Option<HashMap<String, ParameterDefinition>>,

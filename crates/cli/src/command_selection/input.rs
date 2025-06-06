@@ -5,7 +5,11 @@ use rust_cuts_core::error::Result;
 use std::collections::HashMap;
 use std::io::{stdin, stdout, Write};
 
-/// Prompts the user for a parameter value
+/// Prompts the user for a parameter value.
+///
+/// # Errors
+///
+/// Returns an error if there are issues with stdin/stdout operations.
 pub fn prompt_value(
     variable_name: &str,
     parameter_definition: Option<&ParameterDefinition>,
@@ -18,15 +22,15 @@ pub fn prompt_value(
             .or_else(|| parameter_definition.and_then(|def| def.default.as_ref()));
 
         let prompt_base = if let Some(param_def) = parameter_definition {
-            format!("Value for {}", param_def)
+            format!("Value for {param_def}")
         } else {
             format!("Value for `{variable_name}`")
         };
 
         if let Some(default) = &display_default {
-            print!("{} [{}]: ", prompt_base, default);
+            print!("{prompt_base} [{default}]: ",);
         } else {
-            print!("{}: ", prompt_base);
+            print!("{prompt_base}: ");
         }
 
         stdout().flush()?;
@@ -54,7 +58,11 @@ pub fn prompt_value(
     }
 }
 
-/// Confirms with the user whether the command should be run
+/// Confirms with the user whether the command should be run.
+///
+/// # Errors
+///
+/// Returns an error if there are issues with stdin/stdout operations.
 pub fn confirm_command_should_run(has_params: bool) -> Result<super::types::RunChoice> {
     use super::types::RunChoice;
 
@@ -88,7 +96,11 @@ pub fn confirm_command_should_run(has_params: bool) -> Result<super::types::RunC
     }
 }
 
-/// Fills in parameter values by prompting the user
+/// Fills in parameter values by prompting the user.
+///
+/// # Errors
+///
+/// Returns an error if there are issues with stdin/stdout operations.
 pub fn fill_parameter_values(
     tokens: &IndexSet<String>,
     parameter_definitions: &Option<HashMap<String, ParameterDefinition>>,

@@ -89,10 +89,12 @@ pub enum Error {
 }
 
 impl Error {
+    #[must_use]
     pub fn empty_command_definition(path: String) -> Self {
         Self::EmptyCommandDefinition { path }
     }
 
+    #[must_use]
     pub fn yaml_error(
         action: String,
         file_description: String,
@@ -107,6 +109,7 @@ impl Error {
         }
     }
 
+    #[must_use]
     pub fn io_error(file_description: String, path: String, original: std::io::Error) -> Self {
         Self::Io {
             file_description,

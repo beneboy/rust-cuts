@@ -76,7 +76,11 @@ fn redraw_ui(
     Ok(())
 }
 
-/// Prompts the user to choose a command from the list
+/// Prompts the user to choose a command from the list.
+///
+/// # Errors
+///
+/// Returns an error if there are issues with terminal operations or user input handling.
 pub fn prompt_for_command_choice(
     command_definitions: &[CommandDefinition],
     last_command: Option<&CommandExecutionTemplate>,
@@ -170,7 +174,7 @@ pub fn prompt_for_command_choice(
                         row,
                         &ui_state,
                         &indexes_to_display,
-                        &last_command,
+                        last_command,
                     );
 
                     if let Some(command_choice) = command_choice {
@@ -201,9 +205,7 @@ pub fn prompt_for_command_choice(
                     new_ui_state =
                         Some(handle_resize(width, height, &ui_state, &indexes_to_display));
                 }
-                Event::FocusGained => {}
-                Event::FocusLost => {}
-                Event::Paste(_) => {}
+                Event::FocusGained | Event::FocusLost | Event::Paste(_) => {}
             }
         }
     }
@@ -224,7 +226,7 @@ fn handle_key_event(
                 Down
             };
 
-            let new_ui_state = move_selected_index(ui_state, indexes_to_display.len(), &direction);
+            let new_ui_state = move_selected_index(ui_state, indexes_to_display.len(), direction);
 
             Ok((Some(new_ui_state), None))
         }
@@ -267,7 +269,7 @@ fn handle_key_event(
         KeyCode::Esc if ui_state.is_filtering => {
             let mut updated_state = ui_state.clone();
             updated_state.is_filtering = false;
-            updated_state.filter_text = "".to_string();
+            updated_state.filter_text = String::new();
             Ok((Some(updated_state), None))
         }
         KeyCode::Char('/') => {
@@ -331,7 +333,7 @@ fn handle_mouse_event(
     mouse_down_row: u16,
     ui_state: &UiState,
     indexes_to_display: &[CommandIndex],
-    last_command: &Option<&CommandExecutionTemplate>,
+    last_command: Option<&CommandExecutionTemplate>,
 ) -> (
     Option<UiState>,       // UIState if it needs redrawing
     Option<CommandChoice>, // if command selected, this is populated
@@ -358,7 +360,7 @@ fn handle_mouse_event(
                     if clicked_index < indexes_to_display.len() {
                         let clicked_command = match indexes_to_display[clicked_index] {
                             Normal(i) => Some(CommandChoice::Index(i)),
-                            CommandIndex::Rerun => (*last_command)
+                            CommandIndex::Rerun => (last_command)
                                 .map(|last_command| CommandChoice::Rerun(last_command.clone())),
                         };
 
@@ -376,7 +378,7 @@ fn handle_mouse_event(
             };
 
             let new_state =
-                move_selected_index(ui_state, indexes_to_display.len(), &index_change_direction);
+                move_selected_index(ui_state, indexes_to_display.len(), index_change_direction);
 
             (Some(new_state), None, None)
         }
@@ -421,7 +423,7 @@ fn print_header(ui_state: &UiState, command_display_count: usize) -> Result<()> 
 
 /// Pad a value to match the width of the largest value
 fn pad_to_width_of<T: Display>(value: T, max_number: usize) -> String {
-    let width = format!("{}", max_number).len();
+    let width = format!("{max_number}").len();
     format!("{:>width$}", value.to_string())
 }
 
@@ -450,7 +452,7 @@ fn clear_and_write_command_row(
     let padding = if content.len() < (terminal_width as usize) {
         " ".repeat(terminal_width as usize - content.len())
     } else {
-        "".to_string()
+        String::new()
     };
 
     if is_selected {
@@ -516,8 +518,11 @@ fn print_commands_with_selection(
     for (i, index) in visible_commands.enumerate() {
         let is_selected = i + viewport.offset == ui_state.selected_index;
 
+        #[allow(clippy::cast_possible_truncation)]
+        let row = i as u16 + 1; // if user has more than 65536 commands this will fail…
+
         clear_and_write_command_row(
-            i as u16 + 1,
+            row,
             commands_to_display,
             index,
             is_selected,
@@ -533,7 +538,7 @@ fn print_commands_with_selection(
 fn move_selected_index(
     ui_state: &UiState,
     commands_to_display_length: usize,
-    direction: &CycleDirection,
+    direction: CycleDirection,
 ) -> UiState {
     if commands_to_display_length == 0 {
         return ui_state.clone();
@@ -596,7 +601,7 @@ fn filter_displayed_indexes(
         })
         .collect();
 
-    filtered.sort_by(|k1, k2| k1.compare(k2));
+    filtered.sort_by(CommandIndex::compare);
 
     filtered
 }

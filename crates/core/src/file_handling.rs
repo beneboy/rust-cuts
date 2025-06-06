@@ -128,7 +128,7 @@ fn validate_id(id: &str) -> Result<()> {
         return Err(IdWithColon(id.to_string()));
     }
 
-    if id.chars().all(|c| c.is_numeric()) {
+    if id.chars().all(char::is_numeric) {
         return Err(NumericId(id.to_string()));
     }
 
@@ -140,7 +140,7 @@ fn validate_parameters(
     parameters: &[ParameterDefinition],
 ) -> Result<()> {
     let mut ids = HashSet::new();
-    for parameter in parameters.iter() {
+    for parameter in parameters {
         validate_id(&parameter.id)?;
 
         if !ids.insert(parameter.id.clone()) {
@@ -154,7 +154,7 @@ fn validate_parameters(
 
     let command_variables = command.get_ordered_context_variables()?;
 
-    for id in ids.iter() {
+    for id in &ids {
         if !command_variables.contains(id) {
             return Err(NotFoundParameterId(format!("{command}"), id.clone()));
         }
@@ -166,7 +166,7 @@ fn validate_parameters(
 fn validate_command_ids(commands: &[CommandDefinition]) -> Result<()> {
     let mut ids = HashSet::new();
 
-    for cmd in commands.iter() {
+    for cmd in commands {
         if let Some(id) = &cmd.id {
             validate_id(id)?;
 
@@ -417,7 +417,7 @@ mod tests {
 "#;
 
         let mut temp_file = NamedTempFile::new().unwrap();
-        write!(temp_file, "{}", yaml_content).unwrap();
+        write!(temp_file, "{yaml_content}").unwrap();
         let temp_path = temp_file.path().to_str().unwrap();
 
         let result = get_command_definitions(&temp_path.to_string());
@@ -434,7 +434,7 @@ mod tests {
         let yaml_content = "[]";
 
         let mut temp_file = NamedTempFile::new().unwrap();
-        write!(temp_file, "{}", yaml_content).unwrap();
+        write!(temp_file, "{yaml_content}").unwrap();
         let temp_path = temp_file.path().to_str().unwrap();
 
         let result = get_command_definitions(&temp_path.to_string());
@@ -446,7 +446,7 @@ mod tests {
         let yaml_content = "invalid: yaml: content: [";
 
         let mut temp_file = NamedTempFile::new().unwrap();
-        write!(temp_file, "{}", yaml_content).unwrap();
+        write!(temp_file, "{yaml_content}").unwrap();
         let temp_path = temp_file.path().to_str().unwrap();
 
         let result = get_command_definitions(&temp_path.to_string());
@@ -470,7 +470,7 @@ mod tests {
 "#;
 
         let mut temp_file = NamedTempFile::new().unwrap();
-        write!(temp_file, "{}", yaml_content).unwrap();
+        write!(temp_file, "{yaml_content}").unwrap();
         let temp_path = temp_file.path().to_str().unwrap();
 
         let result = get_command_definitions(&temp_path.to_string());

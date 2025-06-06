@@ -22,7 +22,7 @@ use crate::cli_args::Args;
 use crate::command_selection::CommandChoice::CommandId;
 use crate::command_selection::{CommandChoice, RunChoice};
 use crate::parameters::validation::should_prompt_for_parameters;
-use crate::parameters::{process_command_line_parameters, ParameterModeProvider};
+use crate::parameters::{process_command_line, ParameterModeProvider};
 use rust_cuts_core::interpolation::interpolate_command;
 
 mod cli_args;
@@ -118,7 +118,7 @@ fn execute() -> Result<()> {
 
     // Process command-line parameters first
     let mut filled_parameters = if !tokens.is_empty() {
-        process_command_line_parameters(
+        process_command_line(
             args.get_parameter_mode()?,
             &execution_context,
             &parameter_definitions,
