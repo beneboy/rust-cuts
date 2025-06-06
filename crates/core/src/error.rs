@@ -72,10 +72,9 @@ pub enum Error {
     #[error("Invalid ID `{}`: ID cannot be purely numeric", .0)]
     NumericId(String),
 
-
     #[error("Command with ID `{}` was not found", .0)]
     CommandNotFound(String),
-    
+
     #[error("Cannot mix named parameters (-p/--param) with positional parameters. Use one style or the other.")]
     MixedParameterMode,
 
@@ -84,7 +83,7 @@ pub enum Error {
 
     #[error("Parameter `{}` was not found in the command template", .0)]
     MissingParameter(String),
-    
+
     #[error("Number of parameters provided ({}) did not equal the number of parameters in the command template ({})", .0, .1)]
     ParameterCountMismatch(usize, usize),
 }

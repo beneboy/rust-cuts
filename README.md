@@ -1,5 +1,13 @@
 # Rust Cuts
 
+## Supercharged terminal commands with templating and context
+
+## Why Rust Cuts?
+
+- **Stop fighting your shell history.** Run complex commands with a single keystroke
+- **Templated commands with prompts.** No more editing long commands by hand
+- **Context-aware execution.** Automatically set working directory and environment variables
+
 ## What?
 
 Supercharged terminal aliases.

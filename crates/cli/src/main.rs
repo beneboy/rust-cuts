@@ -19,16 +19,15 @@ use std::io::{stdout, Write};
 use std::process::{Command, ExitCode};
 
 use crate::cli_args::Args;
+use crate::command_selection::CommandChoice::CommandId;
 use crate::command_selection::{CommandChoice, RunChoice};
-use crate::parameters::{process_command_line_parameters,  ParameterModeProvider};
-use rust_cuts_core::interpolation::interpolate_command;
-use crate::command_selection::CommandChoice::{CommandId};
 use crate::parameters::validation::should_prompt_for_parameters;
+use crate::parameters::{process_command_line_parameters, ParameterModeProvider};
+use rust_cuts_core::interpolation::interpolate_command;
 
 mod cli_args;
 pub mod command_selection;
 mod parameters;
-
 
 fn get_rerun_request_is_valid(args: &Args) -> Result<bool> {
     if !args.rerun_last_command {
@@ -77,7 +76,7 @@ fn execute() -> Result<()> {
     let parameter_definitions: Option<HashMap<String, ParameterDefinition>>;
 
     let mut is_rerun = false;
-    
+
     match selected_option {
         Index(selected_index) => {
             let selected_command = &parsed_command_defs[selected_index];
@@ -119,7 +118,11 @@ fn execute() -> Result<()> {
 
     // Process command-line parameters first
     let mut filled_parameters = if !tokens.is_empty() {
-        process_command_line_parameters(args.get_parameter_mode()?, &execution_context, &parameter_definitions)?
+        process_command_line_parameters(
+            args.get_parameter_mode()?,
+            &execution_context,
+            &parameter_definitions,
+        )?
     } else {
         None
     };
@@ -141,7 +144,7 @@ fn execute() -> Result<()> {
             // Prompt the user for parameter values
             filled_parameters =
                 fill_parameter_values(tokens, &parameter_definitions, &filled_parameters)?;
-            // After prompting, we don't need to prompt again unless user chooses to change params
+            // After prompting, we don't need to prompt again unless the user chooses to change params
         }
         // Don't overwrite parameters if we already have them and don't need to prompt
 

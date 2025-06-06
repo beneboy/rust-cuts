@@ -20,7 +20,6 @@ pub fn build_parameter_lookup(
     }
 }
 
-
 pub fn interpolate_command(
     context: &HashMap<String, String>,
     templates: &[Template],

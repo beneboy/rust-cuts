@@ -1,11 +1,11 @@
 use crate::parameters::mode::ParameterMode;
+use indexmap::IndexSet;
 use rust_cuts_core::command_definitions::{
-    CommandExecutionTemplate, ParameterDefinition, TemplateParser
+    CommandExecutionTemplate, ParameterDefinition, TemplateParser,
 };
 use rust_cuts_core::error::Error::{MissingParameter, ParameterCountMismatch, ParameterFormat};
 use rust_cuts_core::error::Result;
 use std::collections::HashMap;
-use indexmap::IndexSet;
 
 /// Process command-line parameters based on the parameter mode
 ///
@@ -35,7 +35,7 @@ pub fn process_command_line_parameters(
                 Ok(None)
             } else {
                 Ok(Some(param_defs))
-            }
+            };
         }
 
         ParameterMode::Named(named_params) => {

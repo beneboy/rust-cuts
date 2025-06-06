@@ -1,9 +1,9 @@
-use std::collections::HashMap;
-use std::io::{stdin, stdout, Write};
 use indexmap::IndexSet;
 use itertools::Itertools;
 use rust_cuts_core::command_definitions::ParameterDefinition;
 use rust_cuts_core::error::Result;
+use std::collections::HashMap;
+use std::io::{stdin, stdout, Write};
 
 /// Prompts the user for a parameter value
 pub fn prompt_value(
@@ -116,15 +116,26 @@ pub fn fill_parameter_values(
         let previous_default = previous_context_param
             .as_ref()
             .and_then(|param| param.default.clone())
-            .or_else(|| param_definition.as_ref().and_then(|def| def.default.clone()));
+            .or_else(|| {
+                param_definition
+                    .as_ref()
+                    .and_then(|def| def.default.clone())
+            });
 
         // Choose which parameter definition to display in the prompt
-        let display_param = previous_context_param.as_ref().or(param_definition.as_ref());
+        let display_param = previous_context_param
+            .as_ref()
+            .or(param_definition.as_ref());
 
         let prompted_value = prompt_value(key, display_param, previous_default)?;
 
         // Create or update the parameter definition
-        let new_param = create_or_update_parameter(key, prompted_value, previous_context_param, param_definition);
+        let new_param = create_or_update_parameter(
+            key,
+            prompted_value,
+            previous_context_param,
+            param_definition,
+        );
 
         context.insert(key.clone(), new_param);
     }

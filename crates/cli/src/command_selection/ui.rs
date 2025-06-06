@@ -136,12 +136,15 @@ pub fn prompt_for_command_choice(
         force_initial_draw = false;
 
         if should_redraw {
-
             // Get the current state to work with (from new_ui_state, which we know exists now)
             let current_ui_state = new_ui_state.unwrap();
 
             if ui_state.filter_text != current_ui_state.filter_text {
-                indexes_to_display = filter_displayed_indexes(&matcher, &command_display, &current_ui_state.filter_text);
+                indexes_to_display = filter_displayed_indexes(
+                    &matcher,
+                    &command_display,
+                    &current_ui_state.filter_text,
+                );
             }
 
             redraw_ui(&current_ui_state, &indexes_to_display, &command_display)?;
@@ -193,7 +196,6 @@ pub fn prompt_for_command_choice(
                     if let Some(state) = new_state {
                         new_ui_state = Some(state);
                     }
-
                 }
                 Event::Resize(width, height) => {
                     new_ui_state =
@@ -213,10 +215,7 @@ fn handle_key_event(
     ui_state: &UiState, // Now immutable
     indexes_to_display: &[CommandIndex],
     last_command: Option<&CommandExecutionTemplate>,
-) -> Result<(
-    Option<UiState>,
-    Option<CommandChoice>,
-)> {
+) -> Result<(Option<UiState>, Option<CommandChoice>)> {
     match key_event.code {
         KeyCode::Up | KeyCode::Down => {
             let direction = if key_event.code == KeyCode::Up {
@@ -227,7 +226,7 @@ fn handle_key_event(
 
             let new_ui_state = move_selected_index(ui_state, indexes_to_display.len(), &direction);
 
-            Ok(( Some(new_ui_state), None))
+            Ok((Some(new_ui_state), None))
         }
         KeyCode::Enter => {
             if let Some(command_index) = indexes_to_display.get(ui_state.selected_index) {
@@ -235,10 +234,7 @@ fn handle_key_event(
                     Normal(i) => return Ok((None, Some(CommandChoice::Index(*i)))),
                     CommandIndex::Rerun => {
                         if let Some(last_command) = last_command {
-                            return Ok((
-                                None,
-                                Some(CommandChoice::Rerun(last_command.clone())),
-                            ));
+                            return Ok((None, Some(CommandChoice::Rerun(last_command.clone()))));
                         };
                     }
                 }
@@ -279,7 +275,7 @@ fn handle_key_event(
             updated_state.is_filtering = true;
             Ok((Some(updated_state), None))
         }
-        KeyCode::Char('q') => Ok(( None, Some(CommandChoice::Quit))),
+        KeyCode::Char('q') => Ok((None, Some(CommandChoice::Quit))),
         KeyCode::Char(LAST_COMMAND_OPTION) => {
             if let Some(last_command) = last_command {
                 return Ok((None, Some(CommandChoice::Rerun(last_command.clone()))));

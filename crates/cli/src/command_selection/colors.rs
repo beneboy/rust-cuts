@@ -1,5 +1,5 @@
-use rust_cuts_core::command_definitions::{ColorDefinition, CommandDefinition};
 use crossterm::style::Color;
+use rust_cuts_core::command_definitions::{ColorDefinition, CommandDefinition};
 use rust_cuts_core::error::{Error, Result};
 
 /// Trait for converting color definitions to terminal colors

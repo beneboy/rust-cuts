@@ -4,7 +4,7 @@
 - name: "SSH to EC2"
   command: ["ssh", "-i", "~/path/to/aws-key.pem", "{username}@{host}"]
   parameters:
-    - name: "username"
+    - id: "username"
       default: "ubuntu"
 - name: "Build project"
   command: [ "make", "build" ]

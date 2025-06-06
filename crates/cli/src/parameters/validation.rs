@@ -1,22 +1,20 @@
 use indexmap::IndexSet;
 use std::collections::HashMap;
 
-use rust_cuts_core::command_definitions::ParameterDefinition;
 use crate::parameters::ParameterMode;
+use rust_cuts_core::command_definitions::ParameterDefinition;
 
 /// Determines whether to prompt the user for parameter values.
 ///
 /// The function avoids prompting when:
 /// 1. The command template contains no tokens to interpolate
 /// 2. The user reruns a command (which already has all required parameters)
-/// 3. The user supplies all needed parameters via command-line (named or positional)
 ///
 /// The function prompts when:
-/// 1. The user runs a new command without providing command-line parameters
-/// 2. Command-line parameters don't cover all required tokens
+/// 1. The user runs a new command (always prompts, even with defaults)
 ///
-/// Note: For reruns, we assume the last command already has all parameters it needs.
-/// If parameters were removed from the previous execution, they simply won't be used.
+/// Note: When running a rerun, the user can still choose to change parameters
+/// during the run confirmation using the 'c' option.
 pub fn should_prompt_for_parameters(
     tokens: &IndexSet<String>,
     filled_parameters: &Option<HashMap<String, ParameterDefinition>>,
@@ -29,27 +27,30 @@ pub fn should_prompt_for_parameters(
     }
 
     // No need to prompt for reruns - they already have all parameters
+    // Users can use the 'c' option during confirmation if they want to change parameters
     if is_rerun {
         return false;
     }
 
-    // If using command-line parameters (Named or Positional), check if any are missing
+    // For command-line parameters (Named or Positional), we only skip prompting
+    // if the user has provided ALL parameters via the command line
     if *parameter_mode != ParameterMode::None {
         if let Some(params) = filled_parameters {
-            return has_missing_token_values(tokens, params);
+            // Only skip prompting if every token has a command-line value
+            return !has_all_command_line_parameters(tokens, params);
         }
     }
 
-    // For new commands with no command-line parameters, we need to prompt
+    // For new commands, we always prompt (regardless of defaults)
     true
 }
 
-/// Check if any tokens are missing values in the parameter definitions
-fn has_missing_token_values(tokens: &IndexSet<String>, params: &HashMap<String, ParameterDefinition>) -> bool {
-    tokens.iter().any(|token| {
-        match params.get(token) {
-            Some(param) => param.default.is_none(),
-            None => true, // Token has no parameter definition
-        }
-    })
+/// Check if all tokens have parameter values explicitly provided via command line
+/// This is different from having defaults - we only want to skip prompting
+/// if the user has explicitly provided ALL values via command line
+fn has_all_command_line_parameters(
+    tokens: &IndexSet<String>,
+    params: &HashMap<String, ParameterDefinition>,
+) -> bool {
+    tokens.iter().all(|token| params.get(token).is_some())
 }
