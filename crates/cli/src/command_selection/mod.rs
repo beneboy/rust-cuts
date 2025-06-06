@@ -27,7 +27,7 @@ pub mod types;
 pub mod ui;
 
 // Re-exports for convenience
-pub use input::{confirm_command_should_run, fill_parameter_values, prompt_value};
+pub use input::{confirm_command_should_run, fill_parameter_values};
 pub use types::{CommandChoice, RunChoice};
 pub use ui::prompt_for_command_choice;
 
