@@ -124,25 +124,19 @@ pub fn prompt_for_command_choice(
 
     let mut down_row: Option<u16> = None;
 
-    let mut new_ui_state = Some(ui_state.clone());
+    let mut new_ui_state: Option<UiState> = None;
 
-    let mut force_initial_draw = true;
+    // Do the initial draw before entering the loop
+    redraw_ui(&ui_state, &indexes_to_display, &command_display)?;
 
     loop {
-        // Only check for UI state changes if we have a new UI state
-        let should_redraw = force_initial_draw
-            || if let Some(current_ui_state) = &new_ui_state {
-                *current_ui_state != ui_state
-            } else {
-                false
-            };
+        // Check if we need to redraw due to state changes
+        let state_to_draw = match &new_ui_state {
+            Some(new_state) if *new_state != ui_state => Some(new_state),
+            _ => None,
+        };
 
-        force_initial_draw = false;
-
-        if should_redraw {
-            // Get the current state to work with (from new_ui_state, which we know exists now)
-            let current_ui_state = new_ui_state.unwrap();
-
+        if let Some(current_ui_state) = state_to_draw {
             if ui_state.filter_text != current_ui_state.filter_text {
                 indexes_to_display = filter_displayed_indexes(
                     &matcher,
@@ -151,9 +145,9 @@ pub fn prompt_for_command_choice(
                 );
             }
 
-            redraw_ui(&current_ui_state, &indexes_to_display, &command_display)?;
+            redraw_ui(current_ui_state, &indexes_to_display, &command_display)?;
 
-            ui_state = current_ui_state;
+            ui_state = current_ui_state.clone();
             new_ui_state = None;
         }
 
@@ -446,7 +440,10 @@ fn clear_and_write_command_row(
     let index_as_string = pad_to_width_of(command_index, commands_to_display.len() + 1);
     let fw_index = format!("[{index_as_string}]");
 
-    let command_definition = commands_to_display.get(command_index).unwrap();
+    let Some(command_definition) = commands_to_display.get(command_index) else {
+        // Command index is out of bounds, skip rendering this command
+        return Ok(());
+    };
     let content = format!("{fw_index} {command_definition}");
 
     let padding = if content.len() < (terminal_width as usize) {
