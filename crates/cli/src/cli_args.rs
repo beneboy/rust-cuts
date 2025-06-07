@@ -4,28 +4,71 @@
 //! validation for CLI arguments using the `clap` crate.
 
 use crate::arguments::{determine, Provider, Style};
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use rust_cuts_core::error::Result;
 
-/// Command-line arguments for the rust-cuts CLI tool.
+/// Main CLI arguments structure for the rust-cuts tool.
 ///
-/// This structure defines all available command-line options and arguments
-/// that can be passed to the `rc` binary. It supports both interactive and
-/// direct command execution modes.
+/// This structure defines the top-level command interface that routes to
+/// different subcommands like `exec`, `init`, and `new`.
 ///
 /// # Examples
 ///
 /// ```rust
 /// use clap::Parser;
-/// use rust_cuts_cli::cli_args::Args;
+/// use rust_cuts_cli::cli_args::{Args, Commands};
 ///
-/// // Parse arguments from command line
-/// let args = Args::parse();
+/// // Parse arguments from command line with exec subcommand
+/// let args = Args::parse_from(["rc", "exec", "my-command"]);
+/// match args.command {
+///     Commands::Exec(exec_args) => {
+///         // Handle exec command
+///     }
+///     Commands::Init(_) => {
+///         // Handle init command  
+///     }
+///     Commands::New(_) => {
+///         // Handle new command
+///     }
+/// }
 /// ```
-#[derive(Parser, Debug)] // requires `derive` feature
-#[command(term_width = 0)] // Just to make testing across clap features easier
-#[allow(clippy::struct_excessive_bools)] // silence clippy's warning on this struct
+#[derive(Parser, Debug)]
+#[command(
+    name = "rc",
+    about = "A terminal command management tool",
+    term_width = 0
+)]
 pub struct Args {
+    #[command(subcommand)]
+    pub command: Commands,
+}
+
+/// Available subcommands for the rust-cuts CLI.
+#[derive(Subcommand, Debug)]
+pub enum Commands {
+    /// Execute a saved command (default behavior)
+    Exec(ExecArgs),
+    /// Initialize a new rust-cuts configuration
+    Init(InitArgs),
+    /// Create a new command definition
+    New(NewArgs),
+}
+
+/// Arguments for the exec subcommand.
+///
+/// This contains all the functionality that was previously in the main Args struct.
+/// It supports both interactive and direct command execution modes.
+///
+/// # Examples
+///
+/// ```bash
+/// rc exec my-command
+/// rc exec my-command -p key=value
+/// rc exec --rerun-last-command
+/// ```
+#[derive(Parser, Debug)]
+#[allow(clippy::struct_excessive_bools)] // silence clippy's warning on this struct
+pub struct ExecArgs {
     /// Path to the commands definition config file YAML.
     ///
     /// If not provided, defaults to `~/.rust-cuts/commands.yml`.
@@ -95,7 +138,34 @@ pub struct Args {
     pub positional_arguments: Vec<String>,
 }
 
-impl Provider for Args {
+/// Arguments for the init subcommand.
+///
+/// Initializes a new rust-cuts configuration in the current directory.
+#[derive(Parser, Debug)]
+pub struct InitArgs {
+    /// Force initialization even if config already exists
+    #[arg(long, short = 'f', action)]
+    pub force: bool,
+
+    /// Custom path for the configuration file
+    #[arg(long, short = 'c')]
+    pub config_path: Option<String>,
+}
+
+/// Arguments for the new subcommand.
+///
+/// Creates a new command definition interactively.
+#[derive(Parser, Debug)]
+pub struct NewArgs {
+    /// ID for the new command
+    pub id: Option<String>,
+
+    /// Description for the new command
+    #[arg(long, short = 'd')]
+    pub description: Option<String>,
+}
+
+impl Provider for ExecArgs {
     /// Determines the argument style based on the provided arguments.
     ///
     /// Validates that named and positional arguments aren't mixed and returns
@@ -116,8 +186,8 @@ mod tests {
     use clap::Parser;
 
     #[test]
-    fn test_args_default_values() {
-        let args = Args::parse_from(["rc"]);
+    fn test_exec_args_default_values() {
+        let args = ExecArgs::parse_from(["exec"]);
 
         assert!(args.config_path.is_none());
         assert!(args.last_command_path.is_none());
@@ -131,9 +201,9 @@ mod tests {
     }
 
     #[test]
-    fn test_args_short_flags() {
-        let args = Args::parse_from([
-            "rc",
+    fn test_exec_args_short_flags() {
+        let args = ExecArgs::parse_from([
+            "exec",
             "-c",
             "/custom/config.yml",
             "-l",
@@ -153,9 +223,9 @@ mod tests {
     }
 
     #[test]
-    fn test_args_long_flags() {
-        let args = Args::parse_from([
-            "rc",
+    fn test_exec_args_long_flags() {
+        let args = ExecArgs::parse_from([
+            "exec",
             "--config-path",
             "/custom/config.yml",
             "--last-command-path",
@@ -175,15 +245,15 @@ mod tests {
     }
 
     #[test]
-    fn test_args_command_id() {
-        let args = Args::parse_from(["rc", "my-command"]);
+    fn test_exec_args_command_id() {
+        let args = ExecArgs::parse_from(["exec", "my-command"]);
         assert_eq!(args.command_id_or_index, Some("my-command".to_string()));
     }
 
     #[test]
-    fn test_args_named_parameters() {
-        let args = Args::parse_from([
-            "rc",
+    fn test_exec_args_named_parameters() {
+        let args = ExecArgs::parse_from([
+            "exec",
             "my-command",
             "-p",
             "key1=value1",
@@ -198,8 +268,8 @@ mod tests {
     }
 
     #[test]
-    fn test_args_positional_arguments() {
-        let args = Args::parse_from(["rc", "my-command", "--", "pos1", "pos2", "pos3"]);
+    fn test_exec_args_positional_arguments() {
+        let args = ExecArgs::parse_from(["exec", "my-command", "--", "pos1", "pos2", "pos3"]);
 
         assert_eq!(args.command_id_or_index, Some("my-command".to_string()));
         assert_eq!(args.positional_arguments.len(), 3);
@@ -210,14 +280,14 @@ mod tests {
 
     #[test]
     fn test_style_provider_none() {
-        let args = Args::parse_from(["rc"]);
+        let args = ExecArgs::parse_from(["exec"]);
         let style = args.get_style().unwrap();
         assert_eq!(style, Style::None);
     }
 
     #[test]
     fn test_style_provider_named() {
-        let args = Args::parse_from(["rc", "-p", "key=value"]);
+        let args = ExecArgs::parse_from(["exec", "-p", "key=value"]);
         let style = args.get_style().unwrap();
         match style {
             Style::Named(params) => {
@@ -231,7 +301,7 @@ mod tests {
     #[test]
     fn test_style_provider_positional() {
         // With trailing_var_arg, first arg goes to command_id_or_index, rest to positional_arguments
-        let args = Args::parse_from(["rc", "command", "value1", "value2"]);
+        let args = ExecArgs::parse_from(["exec", "command", "value1", "value2"]);
         let style = args.get_style().unwrap();
         match style {
             Style::Positional(arguments) => {
@@ -248,7 +318,7 @@ mod tests {
     #[test]
     fn test_style_provider_mixed_error() {
         // This creates a mixed mode scenario that should error
-        let args = Args {
+        let args = ExecArgs {
             config_path: None,
             last_command_path: None,
             dry_run: false,
@@ -261,5 +331,38 @@ mod tests {
         };
         let result = args.get_style();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_subcommands_parsing() {
+        // Test exec subcommand
+        let args = Args::parse_from(["rc", "exec", "my-command"]);
+        match args.command {
+            Commands::Exec(exec_args) => {
+                assert_eq!(
+                    exec_args.command_id_or_index,
+                    Some("my-command".to_string())
+                );
+            }
+            _ => panic!("Expected Exec command"),
+        }
+
+        // Test init subcommand
+        let args = Args::parse_from(["rc", "init", "--force"]);
+        match args.command {
+            Commands::Init(init_args) => {
+                assert!(init_args.force);
+            }
+            _ => panic!("Expected Init command"),
+        }
+
+        // Test new subcommand
+        let args = Args::parse_from(["rc", "new", "test-command"]);
+        match args.command {
+            Commands::New(new_args) => {
+                assert_eq!(new_args.id, Some("test-command".to_string()));
+            }
+            _ => panic!("Expected New command"),
+        }
     }
 }

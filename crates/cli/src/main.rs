@@ -20,7 +20,7 @@ use std::process::{Command, ExitCode};
 
 use crate::arguments::validation::should_prompt_for_parameters;
 use crate::arguments::{process_command_line, Provider};
-use crate::cli_args::Args;
+use crate::cli_args::{Args, Commands, ExecArgs, InitArgs, NewArgs};
 use crate::command_selection::CommandChoice::CommandId;
 use crate::command_selection::{CommandChoice, RunChoice};
 use rust_cuts_core::interpolation::interpolate_command;
@@ -36,7 +36,7 @@ mod arguments;
 mod cli_args;
 pub mod command_selection;
 
-fn get_rerun_request_is_valid(args: &Args) -> Result<bool> {
+fn get_rerun_request_is_valid(args: &ExecArgs) -> Result<bool> {
     if !args.rerun_last_command {
         return Ok(false);
     }
@@ -51,7 +51,7 @@ fn get_rerun_request_is_valid(args: &Args) -> Result<bool> {
 
 /// Initialize configuration and load command definitions
 fn initialize_config(
-    args: &Args,
+    args: &ExecArgs,
 ) -> Result<(
     Vec<CommandDefinition>,
     String,
@@ -69,7 +69,7 @@ fn initialize_config(
 
 /// Determine which command to execute based on arguments and user selection
 fn determine_command_choice(
-    args: &Args,
+    args: &ExecArgs,
     parsed_command_defs: &[CommandDefinition],
     last_command: Option<&CommandExecutionTemplate>,
 ) -> Result<CommandChoice> {
@@ -138,7 +138,7 @@ fn setup_execution_context(
 
 /// Handle parameter processing and user interaction loop
 fn process_parameters_and_confirm(
-    args: &Args,
+    args: &ExecArgs,
     mut execution_context: CommandExecutionTemplate,
     parameter_definitions: Option<&HashMap<String, ParameterDefinition>>,
     is_rerun: bool,
@@ -225,16 +225,16 @@ fn process_parameters_and_confirm(
     Ok((execution_context, args_as_string))
 }
 
-fn execute() -> Result<()> {
-    let args = cli_args::Args::parse();
+/// Execute a command using the exec subcommand logic
+fn execute_command(args: &ExecArgs) -> Result<()> {
     let shell = env::var("SHELL").unwrap_or_else(|_| DEFAULT_SHELL.to_string());
 
     // Initialize configuration and load commands
-    let (parsed_command_defs, last_command_path, last_command) = initialize_config(&args)?;
+    let (parsed_command_defs, last_command_path, last_command) = initialize_config(args)?;
 
     // Determine which command to execute
     let selected_option =
-        determine_command_choice(&args, &parsed_command_defs, last_command.as_ref())?;
+        determine_command_choice(args, &parsed_command_defs, last_command.as_ref())?;
 
     // Handle quit option early
     if matches!(selected_option, Quit) {
@@ -249,7 +249,7 @@ fn execute() -> Result<()> {
 
     // Process parameters and get user confirmation
     let (execution_context, args_as_string) = match process_parameters_and_confirm(
-        &args,
+        args,
         execution_context,
         parameter_definitions.as_ref(),
         is_rerun,
@@ -284,8 +284,46 @@ fn execute() -> Result<()> {
     execution::execute_command(command, execution_context.environment)
 }
 
+/// Handle the init subcommand
+#[allow(clippy::unnecessary_wraps)] // Will need Result when actually implemented
+fn handle_init(args: &InitArgs) -> Result<()> {
+    println!("Init command called with args: {args:?}");
+    println!("This will initialize a new rust-cuts configuration.");
+
+    // TODO: Implement init functionality
+    // - Check if config already exists
+    // - Create sample configuration file
+    // - Create directory structure
+
+    Ok(())
+}
+
+/// Handle the new subcommand
+#[allow(clippy::unnecessary_wraps)] // Will need Result when actually implemented
+fn handle_new(args: &NewArgs) -> Result<()> {
+    println!("New command called with args: {args:?}");
+    println!("This will create a new command definition.");
+
+    // TODO: Implement new functionality
+    // - Interactive command creation
+    // - Add to existing config file
+    // - Validate command format
+
+    Ok(())
+}
+
+fn execute() -> Result<()> {
+    let args = Args::parse();
+
+    match args.command {
+        Commands::Exec(exec_args) => execute_command(&exec_args),
+        Commands::Init(init_args) => handle_init(&init_args),
+        Commands::New(new_args) => handle_new(&new_args),
+    }
+}
+
 fn get_selected_option(
-    args: &Args,
+    args: &ExecArgs,
     parsed_command_defs: &[CommandDefinition],
     last_command: Option<&CommandExecutionTemplate>,
 ) -> Result<CommandChoice> {
