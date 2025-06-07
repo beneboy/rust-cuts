@@ -67,10 +67,7 @@ pub trait Provider {
 /// // No arguments
 /// let style = determine(&[], &[]).unwrap();
 /// ```
-pub fn determine(
-    named_args: &[String],
-    positional_args: &[String],
-) -> Result<Style> {
+pub fn determine(named_args: &[String], positional_args: &[String]) -> Result<Style> {
     let using_named = !named_args.is_empty();
     let using_positional = !positional_args.is_empty();
 

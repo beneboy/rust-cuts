@@ -18,12 +18,19 @@ use std::env;
 use std::io::{stdout, Write};
 use std::process::{Command, ExitCode};
 
+use crate::arguments::validation::should_prompt_for_parameters;
+use crate::arguments::{process_command_line, Provider};
 use crate::cli_args::Args;
 use crate::command_selection::CommandChoice::CommandId;
 use crate::command_selection::{CommandChoice, RunChoice};
-use crate::arguments::validation::should_prompt_for_parameters;
-use crate::arguments::{process_command_line, Provider};
 use rust_cuts_core::interpolation::interpolate_command;
+
+/// Type alias for the complex return type of `setup_execution_context`
+type ExecutionContextResult = (
+    CommandExecutionTemplate,
+    Option<HashMap<String, ParameterDefinition>>,
+    bool,
+);
 
 mod arguments;
 mod cli_args;
@@ -42,23 +49,32 @@ fn get_rerun_request_is_valid(args: &Args) -> Result<bool> {
     Ok(true)
 }
 
-#[allow(clippy::too_many_lines)]
-fn execute() -> Result<()> {
-    let args = cli_args::Args::parse();
-
-    let shell = env::var("SHELL").unwrap_or_else(|_| DEFAULT_SHELL.to_string());
-
+/// Initialize configuration and load command definitions
+fn initialize_config(
+    args: &Args,
+) -> Result<(
+    Vec<CommandDefinition>,
+    String,
+    Option<CommandExecutionTemplate>,
+)> {
     let config_path = config::get_config_path(&args.config_path);
     debug!("Config path: `{}`", config_path);
 
     let parsed_command_defs = file_handling::get_command_definitions(&config_path)?;
-
     let last_command_path = config::get_last_command_path(&args.last_command_path);
-
     let last_command = file_handling::get_last_command(&last_command_path)?;
 
-    let rerun_option = if get_rerun_request_is_valid(&args)? {
-        if let Some(last_command) = &last_command {
+    Ok((parsed_command_defs, last_command_path, last_command))
+}
+
+/// Determine which command to execute based on arguments and user selection
+fn determine_command_choice(
+    args: &Args,
+    parsed_command_defs: &[CommandDefinition],
+    last_command: Option<&CommandExecutionTemplate>,
+) -> Result<CommandChoice> {
+    let rerun_option = if get_rerun_request_is_valid(args)? {
+        if let Some(last_command) = last_command {
             Some(Rerun(last_command.clone()))
         } else {
             warn!("Rerun last command was specified, but there is no previous command!");
@@ -68,14 +84,19 @@ fn execute() -> Result<()> {
         None
     };
 
-    let selected_option = match rerun_option {
-        None => get_selected_option(&args, &parsed_command_defs, last_command.as_ref())?,
-        Some(rerun_option) => rerun_option,
-    };
+    match rerun_option {
+        None => get_selected_option(args, parsed_command_defs, last_command),
+        Some(rerun_option) => Ok(rerun_option),
+    }
+}
 
-    let mut execution_context: CommandExecutionTemplate;
+/// Setup execution context and parameter definitions from the selected command
+fn setup_execution_context(
+    selected_option: CommandChoice,
+    parsed_command_defs: &[CommandDefinition],
+) -> Result<ExecutionContextResult> {
+    let execution_context: CommandExecutionTemplate;
     let parameter_definitions: Option<HashMap<String, ParameterDefinition>>;
-
     let mut is_rerun = false;
 
     match selected_option {
@@ -107,36 +128,40 @@ fn execute() -> Result<()> {
         Quit => {
             let mut stdout = stdout();
             queue!(stdout, Clear(ClearType::All),)?;
-            return Ok(());
+            // This is handled in the caller
+            unreachable!("Quit should be handled before calling this function");
         }
     }
 
-    let templates = &execution_context.get_templates()?;
+    Ok((execution_context, parameter_definitions, is_rerun))
+}
 
-    let tokens = &execution_context.get_ordered_context_variables()?;
-
-    let mut args_as_string: String;
+/// Handle parameter processing and user interaction loop
+fn process_parameters_and_confirm(
+    args: &Args,
+    mut execution_context: CommandExecutionTemplate,
+    parameter_definitions: Option<&HashMap<String, ParameterDefinition>>,
+    is_rerun: bool,
+) -> Result<(CommandExecutionTemplate, String)> {
+    let templates = execution_context.get_templates()?;
+    let tokens = execution_context.get_ordered_context_variables()?;
 
     // Process command-line parameters first
     let mut filled_parameters = if tokens.is_empty() {
         None
     } else {
-        process_command_line(
-            args.get_style()?,
-            &execution_context,
-            parameter_definitions.as_ref(),
-        )?
+        process_command_line(args.get_style()?, &execution_context, parameter_definitions)?
     };
 
     // Initial prompt check
     let mut need_to_prompt = should_prompt_for_parameters(
-        tokens,
+        &tokens,
         filled_parameters.as_ref(),
         is_rerun,
         &args.get_style()?,
     );
 
-    loop {
+    let args_as_string = loop {
         // Handle parameters based on our current state
         if tokens.is_empty() {
             // No tokens, no parameters needed
@@ -144,7 +169,7 @@ fn execute() -> Result<()> {
         } else if need_to_prompt {
             // Prompt the user for parameter values
             filled_parameters =
-                fill_parameter_values(tokens, parameter_definitions.as_ref(), filled_parameters.as_ref())?;
+                fill_parameter_values(&tokens, parameter_definitions, filled_parameters.as_ref())?;
             // After prompting, we don't need to prompt again unless the user chooses to change params
         }
         // Don't overwrite parameters if we already have them and don't need to prompt
@@ -163,46 +188,93 @@ fn execute() -> Result<()> {
             None => HashMap::new(),
         };
 
-        args_as_string = interpolate_command(&template_context, templates)?.join(" ");
+        let interpolated_command = interpolate_command(&template_context, &templates)?.join(" ");
 
-        print_command_and_environment(&execution_context, &args_as_string);
+        print_command_and_environment(&execution_context, &interpolated_command);
+
         if args.dry_run {
             println!("Dry run is specified, exiting without executing.");
-            return Ok(());
+            return Err(Error::Misc("Dry run completed".to_string()));
         }
+
         if args.force {
             // Force run - break loop
-            break;
+            execution_context.template_context = filled_parameters;
+            break interpolated_command;
         }
 
         match command_selection::confirm_command_should_run(!tokens.is_empty())? {
             RunChoice::Yes => {
                 // Break loop, do run
                 execution_context.template_context = filled_parameters;
-                break;
+                break interpolated_command;
             }
             RunChoice::No => {
                 // Exit if command was not confirmed and was not forced
-                return Ok(());
+                return Err(Error::Misc(
+                    "Command execution cancelled by user".to_string(),
+                ));
             }
             RunChoice::ChangeParams => {
                 // Continue the loop, params are re-requested if missing_defaults becomes true
                 need_to_prompt = true;
             }
         }
+    };
+
+    Ok((execution_context, args_as_string))
+}
+
+fn execute() -> Result<()> {
+    let args = cli_args::Args::parse();
+    let shell = env::var("SHELL").unwrap_or_else(|_| DEFAULT_SHELL.to_string());
+
+    // Initialize configuration and load commands
+    let (parsed_command_defs, last_command_path, last_command) = initialize_config(&args)?;
+
+    // Determine which command to execute
+    let selected_option =
+        determine_command_choice(&args, &parsed_command_defs, last_command.as_ref())?;
+
+    // Handle quit option early
+    if matches!(selected_option, Quit) {
+        let mut stdout = stdout();
+        queue!(stdout, Clear(ClearType::All),)?;
+        return Ok(());
     }
 
+    // Setup execution context
+    let (execution_context, parameter_definitions, is_rerun) =
+        setup_execution_context(selected_option, &parsed_command_defs)?;
+
+    // Process parameters and get user confirmation
+    let (execution_context, args_as_string) = match process_parameters_and_confirm(
+        &args,
+        execution_context,
+        parameter_definitions.as_ref(),
+        is_rerun,
+    ) {
+        Ok(result) => result,
+        Err(Error::Misc(msg)) if msg.contains("Dry run") || msg.contains("cancelled") => {
+            // These are expected "errors" that should exit cleanly
+            return Ok(());
+        }
+        Err(e) => return Err(e),
+    };
+
+    // Save command if not skipping
+    if args.skip_command_save {
+        info!("Skipping command save was specified. Not (over)writing last command.");
+    } else {
+        file_handling::write_last_command(&last_command_path, &execution_context)?;
+    }
+
+    // Execute the command
     let mut command = Command::new(shell);
     if let Some(working_directory) =
         config::expand_working_directory(&execution_context.working_directory)
     {
         command.current_dir(working_directory);
-    }
-
-    if args.skip_command_save {
-        info!("Skipping command save was specified. Not (over)writing last command.");
-    } else {
-        file_handling::write_last_command(&last_command_path, &execution_context)?;
     }
 
     // Give `-i` argument to start an interactive shell,
@@ -249,7 +321,7 @@ fn get_selected_option(
 
 fn print_command_and_environment(
     execution_context: &CommandExecutionTemplate,
-    args_as_string: &String,
+    args_as_string: &str,
 ) {
     println!("Executing command:\n{args_as_string}");
 

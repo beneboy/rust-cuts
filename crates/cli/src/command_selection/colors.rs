@@ -76,7 +76,7 @@ pub trait CommandDefinitionColor {
     ///
     /// Returns an error if the color definition is invalid.
     fn foreground_color(&self) -> Result<Option<Color>>;
-    
+
     /// Gets the background color for the command.
     ///
     /// # Errors

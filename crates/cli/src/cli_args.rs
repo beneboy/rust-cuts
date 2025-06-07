@@ -3,7 +3,7 @@
 //! This module defines the command-line interface structure and provides
 //! validation for CLI arguments using the `clap` crate.
 
-use crate::arguments::{determine, Style, Provider};
+use crate::arguments::{determine, Provider, Style};
 use clap::Parser;
 use rust_cuts_core::error::Result;
 

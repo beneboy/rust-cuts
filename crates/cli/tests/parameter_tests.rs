@@ -31,7 +31,10 @@ mod tests {
 
     #[test]
     fn test_should_prompt_for_parameters() {
-        let tokens: IndexSet<String> = ["token1", "token2"].iter().map(ToString::to_string).collect();
+        let tokens: IndexSet<String> = ["token1", "token2"]
+            .iter()
+            .map(ToString::to_string)
+            .collect();
         let mut param_defs = HashMap::new();
         param_defs.insert(
             "token1".to_string(),

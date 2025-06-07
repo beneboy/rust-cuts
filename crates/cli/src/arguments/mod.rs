@@ -14,7 +14,7 @@ pub mod style;
 pub mod validation;
 
 // Re-exports for convenience
-pub use style::determine;
-pub use style::Style;
-pub use style::Provider;
 pub use processing::process_command_line;
+pub use style::determine;
+pub use style::Provider;
+pub use style::Style;

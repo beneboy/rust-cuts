@@ -113,9 +113,7 @@ pub fn fill_parameter_values<S: std::hash::BuildHasher, T: std::hash::BuildHashe
     let mut context: HashMap<String, ParameterDefinition> = HashMap::new();
     for key in tokens.iter().sorted() {
         // Get the previous context value if available
-        let previous_context_param = existing_context
-            .and_then(|ctx| ctx.get(key))
-            .cloned();
+        let previous_context_param = existing_context.and_then(|ctx| ctx.get(key)).cloned();
 
         // Get the parameter definition if available
         let param_definition = parameter_definitions
