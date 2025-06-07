@@ -101,10 +101,10 @@ pub fn confirm_command_should_run(has_params: bool) -> Result<super::types::RunC
 /// # Errors
 ///
 /// Returns an error if there are issues with stdin/stdout operations.
-pub fn fill_parameter_values(
+pub fn fill_parameter_values<S: std::hash::BuildHasher, T: std::hash::BuildHasher>(
     tokens: &IndexSet<String>,
-    parameter_definitions: &Option<HashMap<String, ParameterDefinition>>,
-    existing_context: &Option<HashMap<String, ParameterDefinition>>,
+    parameter_definitions: Option<&HashMap<String, ParameterDefinition, S>>,
+    existing_context: Option<&HashMap<String, ParameterDefinition, T>>,
 ) -> Result<Option<HashMap<String, ParameterDefinition>>> {
     if tokens.is_empty() {
         return Ok(None);
@@ -114,13 +114,11 @@ pub fn fill_parameter_values(
     for key in tokens.iter().sorted() {
         // Get the previous context value if available
         let previous_context_param = existing_context
-            .as_ref()
             .and_then(|ctx| ctx.get(key))
             .cloned();
 
         // Get the parameter definition if available
         let param_definition = parameter_definitions
-            .as_ref()
             .and_then(|defs| defs.get(key))
             .cloned();
 

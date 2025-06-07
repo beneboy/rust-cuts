@@ -92,7 +92,7 @@ pub struct Args {
     /// rc ssh-to prod web-01
     /// ```
     #[arg(trailing_var_arg = true)]
-    pub positional_args: Vec<String>,
+    pub positional_arguments: Vec<String>,
 }
 
 impl Provider for Args {
@@ -106,7 +106,7 @@ impl Provider for Args {
     /// Returns an error if both named and positional arguments are provided,
     /// as this is not allowed.
     fn get_style(&self) -> Result<Style> {
-        determine(&self.parameters, &self.positional_args)
+        determine(&self.parameters, &self.positional_arguments)
     }
 }
 
@@ -127,7 +127,7 @@ mod tests {
         assert!(!args.skip_command_save);
         assert!(args.command_id_or_index.is_none());
         assert!(args.parameters.is_empty());
-        assert!(args.positional_args.is_empty());
+        assert!(args.positional_arguments.is_empty());
     }
 
     #[test]
@@ -202,10 +202,10 @@ mod tests {
         let args = Args::parse_from(["rc", "my-command", "--", "pos1", "pos2", "pos3"]);
 
         assert_eq!(args.command_id_or_index, Some("my-command".to_string()));
-        assert_eq!(args.positional_args.len(), 3);
-        assert_eq!(args.positional_args[0], "pos1");
-        assert_eq!(args.positional_args[1], "pos2");
-        assert_eq!(args.positional_args[2], "pos3");
+        assert_eq!(args.positional_arguments.len(), 3);
+        assert_eq!(args.positional_arguments[0], "pos1");
+        assert_eq!(args.positional_arguments[1], "pos2");
+        assert_eq!(args.positional_arguments[2], "pos3");
     }
 
     #[test]
@@ -230,7 +230,7 @@ mod tests {
 
     #[test]
     fn test_style_provider_positional() {
-        // With trailing_var_arg, first arg goes to command_id_or_index, rest to positional_args
+        // With trailing_var_arg, first arg goes to command_id_or_index, rest to positional_arguments
         let args = Args::parse_from(["rc", "command", "value1", "value2"]);
         let style = args.get_style().unwrap();
         match style {
@@ -257,7 +257,7 @@ mod tests {
             skip_command_save: false,
             command_id_or_index: None,
             parameters: vec!["key=value".to_string()],
-            positional_args: vec!["positional".to_string()],
+            positional_arguments: vec!["positional".to_string()],
         };
         let result = args.get_style();
         assert!(result.is_err());

@@ -31,7 +31,7 @@ mod tests {
 
     #[test]
     fn test_should_prompt_for_parameters() {
-        let tokens: IndexSet<String> = ["token1", "token2"].iter().map(|s| s.to_string()).collect();
+        let tokens: IndexSet<String> = ["token1", "token2"].iter().map(ToString::to_string).collect();
         let mut param_defs = HashMap::new();
         param_defs.insert(
             "token1".to_string(),
@@ -44,25 +44,25 @@ mod tests {
 
         // Case 1: No tokens to interpolate
         let empty_tokens = IndexSet::new();
-        assert!(!should_prompt_for_parameters(
+        assert!(!should_prompt_for_parameters::<std::hash::RandomState>(
             &empty_tokens,
-            &None,
+            None,
             false,
             &Style::None
         ));
 
         // Case 2: New command (not rerun) without command-line parameters
-        assert!(should_prompt_for_parameters(
+        assert!(should_prompt_for_parameters::<std::hash::RandomState>(
             &tokens,
-            &None,
+            None,
             false,
             &Style::None
         ));
 
         // Case 3: Rerun - should never prompt regardless of parameters
-        assert!(!should_prompt_for_parameters(
+        assert!(!should_prompt_for_parameters::<std::hash::RandomState>(
             &tokens,
-            &None,
+            None,
             true,
             &Style::None
         ));
@@ -88,7 +88,7 @@ mod tests {
 
         assert!(!should_prompt_for_parameters(
             &tokens,
-            &Some(filled_params.clone()),
+            Some(&filled_params),
             false,
             &Style::Named(vec!["token1=value1".to_string()])
         ));
@@ -106,7 +106,7 @@ mod tests {
 
         assert!(should_prompt_for_parameters(
             &tokens,
-            &Some(partial_params),
+            Some(&partial_params),
             false,
             &Style::Named(vec!["token1=value1".to_string()])
         ));

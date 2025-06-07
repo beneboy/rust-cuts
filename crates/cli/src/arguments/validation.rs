@@ -16,9 +16,9 @@ use rust_cuts_core::command_definitions::ParameterDefinition;
 /// Note: When running a rerun, the user can still choose to change parameters
 /// during the run confirmation using the 'c' option.
 #[must_use]
-pub fn should_prompt_for_parameters(
+pub fn should_prompt_for_parameters<S: std::hash::BuildHasher>(
     tokens: &IndexSet<String>,
-    filled_parameters: &Option<HashMap<String, ParameterDefinition>>,
+    filled_parameters: Option<&HashMap<String, ParameterDefinition, S>>,
     is_rerun: bool,
     argument_style: &Style,
 ) -> bool {
@@ -49,9 +49,9 @@ pub fn should_prompt_for_parameters(
 /// Check if all tokens have parameter values explicitly provided via command line
 /// This is different from having defaults - we only want to skip prompting
 /// if the user has explicitly provided ALL values via command line
-fn has_all_command_line_parameters(
+fn has_all_command_line_parameters<S: std::hash::BuildHasher>(
     tokens: &IndexSet<String>,
-    params: &HashMap<String, ParameterDefinition>,
+    params: &HashMap<String, ParameterDefinition, S>,
 ) -> bool {
     tokens.iter().all(|token| params.get(token).is_some())
 }

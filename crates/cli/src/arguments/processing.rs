@@ -19,10 +19,10 @@ use std::collections::HashMap;
 /// - Parameter format is invalid (for named parameters)
 /// - Parameter count doesn't match template variables (for positional parameters)
 /// - Required parameters are missing
-pub fn process_command_line(
+pub fn process_command_line<S: std::hash::BuildHasher + Default>(
     argument_style: Style,
     execution_template: &CommandExecutionTemplate,
-    parameter_definitions: &Option<HashMap<String, ParameterDefinition>>,
+    parameter_definitions: Option<&HashMap<String, ParameterDefinition, S>>,
 ) -> Result<Option<HashMap<String, ParameterDefinition>>> {
     let ordered_tokens = execution_template.get_ordered_context_variables()?;
 
@@ -32,7 +32,7 @@ pub fn process_command_line(
 
     // Base parameter definitions to start with
     let mut param_defs = match parameter_definitions {
-        Some(defs) => defs.clone(),
+        Some(defs) => defs.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
         None => HashMap::new(),
     };
 

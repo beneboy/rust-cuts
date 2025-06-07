@@ -42,6 +42,7 @@ fn get_rerun_request_is_valid(args: &Args) -> Result<bool> {
     Ok(true)
 }
 
+#[allow(clippy::too_many_lines)]
 fn execute() -> Result<()> {
     let args = cli_args::Args::parse();
 
@@ -117,20 +118,20 @@ fn execute() -> Result<()> {
     let mut args_as_string: String;
 
     // Process command-line parameters first
-    let mut filled_parameters = if !tokens.is_empty() {
+    let mut filled_parameters = if tokens.is_empty() {
+        None
+    } else {
         process_command_line(
             args.get_style()?,
             &execution_context,
-            &parameter_definitions,
+            parameter_definitions.as_ref(),
         )?
-    } else {
-        None
     };
 
     // Initial prompt check
     let mut need_to_prompt = should_prompt_for_parameters(
         tokens,
-        &filled_parameters,
+        filled_parameters.as_ref(),
         is_rerun,
         &args.get_style()?,
     );
@@ -143,7 +144,7 @@ fn execute() -> Result<()> {
         } else if need_to_prompt {
             // Prompt the user for parameter values
             filled_parameters =
-                fill_parameter_values(tokens, &parameter_definitions, &filled_parameters)?;
+                fill_parameter_values(tokens, parameter_definitions.as_ref(), filled_parameters.as_ref())?;
             // After prompting, we don't need to prompt again unless the user chooses to change params
         }
         // Don't overwrite parameters if we already have them and don't need to prompt
