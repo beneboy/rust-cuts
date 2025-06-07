@@ -3,7 +3,7 @@
 //! This module defines the command-line interface structure and provides
 //! validation for CLI arguments using the `clap` crate.
 
-use crate::parameters::{determine_parameter_mode, ParameterMode, ParameterModeProvider};
+use crate::arguments::{determine, Style, Provider};
 use clap::Parser;
 use rust_cuts_core::error::Result;
 
@@ -73,7 +73,7 @@ pub struct Args {
     /// Named parameters for the command in the format key=value.
     ///
     /// Multiple parameters can be provided with repeated `-p` flags.
-    /// Cannot be mixed with positional parameters.
+    /// Cannot be mixed with positional arguments.
     ///
     /// # Examples
     /// ```bash
@@ -82,9 +82,9 @@ pub struct Args {
     #[arg(long = "param", short = 'p', action = clap::ArgAction::Append)]
     pub parameters: Vec<String>,
 
-    /// Positional parameters for substitution in the command template.
+    /// Positional arguments for substitution in the command template.
     ///
-    /// Parameters are matched by position to template variables in order of appearance.
+    /// Arguments are matched by position to template variables in order of appearance.
     /// Cannot be mixed with named parameters.
     ///
     /// # Examples
@@ -95,18 +95,18 @@ pub struct Args {
     pub positional_args: Vec<String>,
 }
 
-impl ParameterModeProvider for Args {
-    /// Determines the parameter mode based on the provided arguments.
+impl Provider for Args {
+    /// Determines the argument style based on the provided arguments.
     ///
-    /// Validates that named and positional parameters aren't mixed and returns
-    /// the appropriate [`ParameterMode`].
+    /// Validates that named and positional arguments aren't mixed and returns
+    /// the appropriate [`Style`].
     ///
     /// # Errors
     ///
-    /// Returns an error if both named and positional parameters are provided,
+    /// Returns an error if both named and positional arguments are provided,
     /// as this is not allowed.
-    fn get_parameter_mode(&self) -> Result<ParameterMode> {
-        determine_parameter_mode(&self.parameters, &self.positional_args)
+    fn get_style(&self) -> Result<Style> {
+        determine(&self.parameters, &self.positional_args)
     }
 }
 
@@ -198,7 +198,7 @@ mod tests {
     }
 
     #[test]
-    fn test_args_positional_parameters() {
+    fn test_args_positional_arguments() {
         let args = Args::parse_from(["rc", "my-command", "--", "pos1", "pos2", "pos3"]);
 
         assert_eq!(args.command_id_or_index, Some("my-command".to_string()));
@@ -209,44 +209,44 @@ mod tests {
     }
 
     #[test]
-    fn test_parameter_mode_provider_none() {
+    fn test_style_provider_none() {
         let args = Args::parse_from(["rc"]);
-        let mode = args.get_parameter_mode().unwrap();
-        assert_eq!(mode, ParameterMode::None);
+        let style = args.get_style().unwrap();
+        assert_eq!(style, Style::None);
     }
 
     #[test]
-    fn test_parameter_mode_provider_named() {
+    fn test_style_provider_named() {
         let args = Args::parse_from(["rc", "-p", "key=value"]);
-        let mode = args.get_parameter_mode().unwrap();
-        match mode {
-            ParameterMode::Named(params) => {
+        let style = args.get_style().unwrap();
+        match style {
+            Style::Named(params) => {
                 assert_eq!(params.len(), 1);
                 assert_eq!(params[0], "key=value");
             }
-            _ => panic!("Expected Named parameter mode"),
+            _ => panic!("Expected Named argument style"),
         }
     }
 
     #[test]
-    fn test_parameter_mode_provider_positional() {
+    fn test_style_provider_positional() {
         // With trailing_var_arg, first arg goes to command_id_or_index, rest to positional_args
         let args = Args::parse_from(["rc", "command", "value1", "value2"]);
-        let mode = args.get_parameter_mode().unwrap();
-        match mode {
-            ParameterMode::Positional(params) => {
-                assert_eq!(params.len(), 2);
-                assert_eq!(params[0], "value1");
-                assert_eq!(params[1], "value2");
+        let style = args.get_style().unwrap();
+        match style {
+            Style::Positional(arguments) => {
+                assert_eq!(arguments.len(), 2);
+                assert_eq!(arguments[0], "value1");
+                assert_eq!(arguments[1], "value2");
             }
-            _ => panic!("Expected Positional parameter mode"),
+            _ => panic!("Expected Positional argument style"),
         }
         // Verify the first arg went to command_id_or_index
         assert_eq!(args.command_id_or_index, Some("command".to_string()));
     }
 
     #[test]
-    fn test_parameter_mode_provider_mixed_error() {
+    fn test_style_provider_mixed_error() {
         // This creates a mixed mode scenario that should error
         let args = Args {
             config_path: None,
@@ -259,7 +259,7 @@ mod tests {
             parameters: vec!["key=value".to_string()],
             positional_args: vec!["positional".to_string()],
         };
-        let result = args.get_parameter_mode();
+        let result = args.get_style();
         assert!(result.is_err());
     }
 }

@@ -21,13 +21,13 @@ use std::process::{Command, ExitCode};
 use crate::cli_args::Args;
 use crate::command_selection::CommandChoice::CommandId;
 use crate::command_selection::{CommandChoice, RunChoice};
-use crate::parameters::validation::should_prompt_for_parameters;
-use crate::parameters::{process_command_line, ParameterModeProvider};
+use crate::arguments::validation::should_prompt_for_parameters;
+use crate::arguments::{process_command_line, Provider};
 use rust_cuts_core::interpolation::interpolate_command;
 
+mod arguments;
 mod cli_args;
 pub mod command_selection;
-mod parameters;
 
 fn get_rerun_request_is_valid(args: &Args) -> Result<bool> {
     if !args.rerun_last_command {
@@ -119,7 +119,7 @@ fn execute() -> Result<()> {
     // Process command-line parameters first
     let mut filled_parameters = if !tokens.is_empty() {
         process_command_line(
-            args.get_parameter_mode()?,
+            args.get_style()?,
             &execution_context,
             &parameter_definitions,
         )?
@@ -132,7 +132,7 @@ fn execute() -> Result<()> {
         tokens,
         &filled_parameters,
         is_rerun,
-        &args.get_parameter_mode()?,
+        &args.get_style()?,
     );
 
     loop {

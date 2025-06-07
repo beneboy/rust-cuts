@@ -1,4 +1,4 @@
-use crate::parameters::mode::ParameterMode;
+use crate::arguments::style::Style;
 use indexmap::IndexSet;
 use rust_cuts_core::command_definitions::{
     CommandExecutionTemplate, ParameterDefinition, TemplateParser,
@@ -7,7 +7,7 @@ use rust_cuts_core::error::Error::{MissingParameter, ParameterCountMismatch, Par
 use rust_cuts_core::error::Result;
 use std::collections::HashMap;
 
-/// Process command-line parameters based on the parameter mode.
+/// Process command-line arguments based on the parameter mode.
 ///
 /// Takes the parameter mode, execution context, and existing parameter definitions,
 /// and returns a map of parameter definitions with values filled from command-line arguments.
@@ -20,7 +20,7 @@ use std::collections::HashMap;
 /// - Parameter count doesn't match template variables (for positional parameters)
 /// - Required parameters are missing
 pub fn process_command_line(
-    parameter_mode: ParameterMode,
+    argument_style: Style,
     execution_template: &CommandExecutionTemplate,
     parameter_definitions: &Option<HashMap<String, ParameterDefinition>>,
 ) -> Result<Option<HashMap<String, ParameterDefinition>>> {
@@ -36,8 +36,8 @@ pub fn process_command_line(
         None => HashMap::new(),
     };
 
-    match parameter_mode {
-        ParameterMode::None => {
+    match argument_style {
+        Style::None => {
             // No parameters provided, return defaults or None
             return if param_defs.is_empty() {
                 Ok(None)
@@ -46,11 +46,11 @@ pub fn process_command_line(
             };
         }
 
-        ParameterMode::Named(named_params) => {
+        Style::Named(named_params) => {
             process_named_parameters(&named_params, &ordered_tokens, &mut param_defs)?;
         }
 
-        ParameterMode::Positional(positional_params) => {
+        Style::Positional(positional_params) => {
             process_positional_parameters(&positional_params, &ordered_tokens, &mut param_defs)?;
         }
     }

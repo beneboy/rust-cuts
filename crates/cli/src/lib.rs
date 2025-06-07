@@ -7,7 +7,7 @@
 //! # Key Features
 //!
 //! - **Interactive Command Selection**: Terminal-based UI for browsing and selecting commands
-//! - **Parameter Processing**: Support for named and positional parameter input
+//! - **Parameter Processing**: Support for named parameters and positional argument input
 //! - **Command Confirmation**: Interactive confirmation before command execution
 //! - **Flexible Parameter Modes**: Support for command-line parameters or interactive prompts
 //! - **Command History**: Ability to rerun the last executed command
@@ -18,7 +18,7 @@
 //!
 //! - [`cli_args`]: Command-line argument parsing and validation
 //! - [`command_selection`]: Interactive UI for command selection and confirmation
-//! - [`parameters`]: Parameter processing for both named and positional modes
+//! - [`arguments`]: Argument processing for both named and positional styles
 //!
 //! # Examples
 //!
@@ -34,7 +34,7 @@
 //! # With named parameters
 //! rc my-command --param host=localhost --param port=8080
 //!
-//! # With positional parameters  
+//! # With positional arguments  
 //! rc my-command localhost 8080
 //!
 //! # Rerun last command
@@ -44,6 +44,6 @@
 //! rc --dry-run my-command
 //! ```
 
+pub mod arguments;
 pub mod cli_args;
 pub mod command_selection;
-pub mod parameters;

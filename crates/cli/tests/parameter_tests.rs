@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use indexmap::IndexSet;
-    use rust_cuts_cli::parameters::mode::{determine_parameter_mode, ParameterMode};
-    use rust_cuts_cli::parameters::validation::should_prompt_for_parameters;
+    use rust_cuts_cli::arguments::style::{determine, Style};
+    use rust_cuts_cli::arguments::validation::should_prompt_for_parameters;
     use rust_cuts_core::command_definitions::ParameterDefinition;
     use std::collections::HashMap;
 
@@ -11,21 +11,21 @@ mod tests {
         // Test with no parameters
         let empty_named: Vec<String> = vec![];
         let empty_positional: Vec<String> = vec![];
-        let mode = determine_parameter_mode(&empty_named, &empty_positional).unwrap();
-        assert!(matches!(mode, ParameterMode::None));
+        let style = determine(&empty_named, &empty_positional).unwrap();
+        assert!(matches!(style, Style::None));
 
         // Test with named parameters
         let named = vec!["key1=value1".to_string(), "key2=value2".to_string()];
-        let mode = determine_parameter_mode(&named, &empty_positional).unwrap();
-        assert!(matches!(mode, ParameterMode::Named(_)));
+        let style = determine(&named, &empty_positional).unwrap();
+        assert!(matches!(style, Style::Named(_)));
 
-        // Test with positional parameters
+        // Test with positional arguments
         let positional = vec!["value1".to_string(), "value2".to_string()];
-        let mode = determine_parameter_mode(&empty_named, &positional).unwrap();
-        assert!(matches!(mode, ParameterMode::Positional(_)));
+        let style = determine(&empty_named, &positional).unwrap();
+        assert!(matches!(style, Style::Positional(_)));
 
         // Test mixed parameters (should error)
-        let result = determine_parameter_mode(&named, &positional);
+        let result = determine(&named, &positional);
         assert!(result.is_err());
     }
 
@@ -48,7 +48,7 @@ mod tests {
             &empty_tokens,
             &None,
             false,
-            &ParameterMode::None
+            &Style::None
         ));
 
         // Case 2: New command (not rerun) without command-line parameters
@@ -56,7 +56,7 @@ mod tests {
             &tokens,
             &None,
             false,
-            &ParameterMode::None
+            &Style::None
         ));
 
         // Case 3: Rerun - should never prompt regardless of parameters
@@ -64,7 +64,7 @@ mod tests {
             &tokens,
             &None,
             true,
-            &ParameterMode::None
+            &Style::None
         ));
 
         // Case 4: Command-line parameters that cover all tokens
@@ -90,7 +90,7 @@ mod tests {
             &tokens,
             &Some(filled_params.clone()),
             false,
-            &ParameterMode::Named(vec!["token1=value1".to_string()])
+            &Style::Named(vec!["token1=value1".to_string()])
         ));
 
         // Case 5: Command-line parameters that are missing some tokens
@@ -108,7 +108,7 @@ mod tests {
             &tokens,
             &Some(partial_params),
             false,
-            &ParameterMode::Named(vec!["token1=value1".to_string()])
+            &Style::Named(vec!["token1=value1".to_string()])
         ));
     }
 }
