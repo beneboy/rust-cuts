@@ -312,14 +312,82 @@ fn handle_new(args: &NewArgs) -> Result<()> {
     Ok(())
 }
 
-fn execute() -> Result<()> {
-    let args = Args::parse();
+/// Parse command line arguments with backwards compatibility fallback.
+/// 
+/// First attempts to parse arguments as subcommands. If that fails,
+/// prepends "exec" and tries again for backwards compatibility.
+fn parse_args_with_fallback() -> Result<Args> {
+    let args: Vec<String> = env::args().collect();
+    
+    // Handle special cases that should never fallback to exec
+    if args.len() == 1 {
+        // Just "rc" with no args -> "rc exec" (interactive)
+        let interactive_args = vec![args[0].clone(), "exec".to_string()];
+        return Args::try_parse_from(&interactive_args)
+            .map_err(|e| Error::Misc(e.to_string()));
+    }
+    
+    // Check for global flags that should be handled at the top level
+    if args.len() == 2 && (args[1] == "--help" || args[1] == "-h" || args[1] == "--version" || args[1] == "-V") {
+        // For help/version, we need to handle clap's special exit behavior
+        match Args::try_parse_from(&args) {
+            Ok(parsed) => return Ok(parsed),
+            Err(e) => {
+                use clap::error::ErrorKind;
+                if matches!(e.kind(), ErrorKind::DisplayHelp | ErrorKind::DisplayVersion) {
+                    // This is expected - clap wants to exit after showing help/version
+                    println!("{e}");
+                    std::process::exit(0);
+                } else {
+                    return Err(Error::Misc(e.to_string()));
+                }
+            }
+        }
+    }
+    
+    // First attempt: try parsing as-is
+    match Args::try_parse_from(&args) {
+        Ok(parsed) => Ok(parsed),
+        Err(original_error) => {
+            use clap::error::ErrorKind;
+            // Check if the first parse failed due to help/version - if so, handle it directly
+            if matches!(original_error.kind(), ErrorKind::DisplayHelp | ErrorKind::DisplayVersion) {
+                println!("{original_error}");
+                std::process::exit(0);
+            }
+            
+            // Second attempt: prepend "exec" and try again for backwards compatibility
+            let mut fallback_args = vec![args[0].clone(), "exec".to_string()];
+            fallback_args.extend_from_slice(&args[1..]);
+            
+            match Args::try_parse_from(&fallback_args) {
+                Ok(parsed) => Ok(parsed),
+                Err(fallback_error) => {
+                    if matches!(fallback_error.kind(), ErrorKind::DisplayHelp | ErrorKind::DisplayVersion) {
+                        // This is expected - clap wants to exit after showing help/version
+                        println!("{fallback_error}");
+                        std::process::exit(0);
+                    } else {
+                        // If both fail, return the original error for better UX
+                        Err(Error::Misc(original_error.to_string()))
+                    }
+                }
+            }
+        }
+    }
+}
 
+fn execute_with_parsed_args(args: Args) -> Result<()> {
     match args.command {
         Commands::Exec(exec_args) => execute_command(&exec_args),
         Commands::Init(init_args) => handle_init(&init_args),
         Commands::New(new_args) => handle_new(&new_args),
     }
+}
+
+fn execute() -> Result<()> {
+    let args = parse_args_with_fallback()?;
+    execute_with_parsed_args(args)
 }
 
 fn get_selected_option(

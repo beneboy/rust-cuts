@@ -365,4 +365,73 @@ mod tests {
             _ => panic!("Expected New command"),
         }
     }
+
+    #[test] 
+    fn test_backwards_compatibility_parsing() {
+        // Helper function to test parse_args_with_fallback behavior
+        fn test_parse_fallback(input_args: &[&str]) -> Option<Args> {
+            // Simulate the parsing logic from main.rs
+            match Args::try_parse_from(input_args) {
+                Ok(parsed) => Some(parsed),
+                Err(_original_error) => {
+                    if input_args.len() >= 2 {
+                        let mut fallback_args = vec![input_args[0], "exec"];
+                        fallback_args.extend_from_slice(&input_args[1..]);
+                        Args::try_parse_from(&fallback_args).ok()
+                    } else {
+                        Args::try_parse_from([input_args[0], "exec"]).ok()
+                    }
+                }
+            }
+        }
+        
+        // Test backwards compatibility: "rc command" should become "rc exec command"
+        let result = test_parse_fallback(&["rc", "deploy"]);
+        assert!(result.is_some());
+        if let Some(args) = result {
+            match args.command {
+                Commands::Exec(exec_args) => {
+                    assert_eq!(exec_args.command_id_or_index, Some("deploy".to_string()));
+                }
+                _ => panic!("Expected Exec command for backwards compatibility"),
+            }
+        }
+        
+        // Test that built-in subcommands still work directly (first parse succeeds)
+        let init_result = test_parse_fallback(&["rc", "init", "--force"]);
+        assert!(init_result.is_some());
+        if let Some(args) = init_result {
+            match args.command {
+                Commands::Init(init_args) => {
+                    assert!(init_args.force);
+                }
+                _ => panic!("Expected Init command"),
+            }
+        }
+        
+        // Test exec with parameters - should fallback to exec
+        let param_result = test_parse_fallback(&["rc", "deploy", "-p", "env=prod"]);
+        assert!(param_result.is_some());
+        if let Some(args) = param_result {
+            match args.command {
+                Commands::Exec(exec_args) => {
+                    assert_eq!(exec_args.command_id_or_index, Some("deploy".to_string()));
+                    assert_eq!(exec_args.parameters, vec!["env=prod"]);
+                }
+                _ => panic!("Expected Exec command with parameters"),
+            }
+        }
+        
+        // Test explicit exec still works
+        let explicit_result = test_parse_fallback(&["rc", "exec", "deploy"]);
+        assert!(explicit_result.is_some());
+        if let Some(args) = explicit_result {
+            match args.command {
+                Commands::Exec(exec_args) => {
+                    assert_eq!(exec_args.command_id_or_index, Some("deploy".to_string()));
+                }
+                _ => panic!("Expected Exec command"),
+            }
+        }
+    }
 }
