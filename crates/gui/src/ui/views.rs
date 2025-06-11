@@ -63,36 +63,45 @@ fn command_details_view(app: &RustCuts) -> Element<Message> {
                         }
                     }
 
-                    for var_name in template_vars {
+                    for (tab_index, var_name) in template_vars.iter().enumerate() {
                         let value = app
                             .parameter_values
-                            .get(&var_name)
+                            .get(var_name)
                             .cloned()
                             .unwrap_or_default();
 
-                        let description = param_lookup.get(&var_name)
+                        let description = param_lookup.get(var_name)
                             .and_then(|p| p.description.as_deref());
 
-                        let param_input = components::parameter_input(&var_name, &value, description);
+                        let param_input = components::parameter_input(var_name, &value, description, tab_index);
                         details = details.push(param_input);
                     }
                 }
             }
 
-            details = details.push(components::action_buttons());
+            details = details.push(components::action_buttons(&app.execution_state));
 
-            if let Some(output) = &app.output {
-                let output_text = match output {
+            // Always show output area (even if empty) at full width
+            let output_content = if app.execution_state == crate::app::ExecutionState::RunningInline && !app.streaming_output.is_empty() {
+                // Show streaming output while command is running
+                text(&app.streaming_output).size(14)
+            } else if let Some(output) = &app.output {
+                // Show final output when command is complete
+                match output {
                     Ok(stdout) => text(stdout).size(14),
                     Err(error) => text(error).size(14).color([0.8, 0.2, 0.2]),
-                };
-                details = details.push(
-                    container(scrollable(output_text))
-                        .padding(10)
-                        .style(container::bordered_box)
-                        .height(Length::FillPortion(2)),
-                );
-            }
+                }
+            } else {
+                text("")
+            };
+            
+            details = details.push(
+                container(scrollable(output_content))
+                    .padding(10)
+                    .style(container::bordered_box)
+                    .width(Length::Fill)
+                    .height(Length::FillPortion(3)), // Make it larger
+            );
 
             details.into()
         } else {

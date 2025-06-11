@@ -4,6 +4,17 @@ pub enum Message {
     ParameterChanged(String, String),
     RunCommand,
     RunInTerminal,
+    CancelCommand,
+    CommandOutputUpdate(String), // For streaming output
     CommandExecuted(Result<String, String>),
     TerminalLaunched(Result<(), String>),
+    FocusNext,
+    FocusPrevious,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExecutionState {
+    Idle,
+    RunningInline,
+    RunningInTerminal,
 }
