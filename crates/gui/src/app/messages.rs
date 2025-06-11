@@ -8,6 +8,7 @@ pub enum Message {
     CommandOutputUpdate(String), // For streaming output
     CommandExecuted(Result<String, String>),
     TerminalLaunched(Result<(), String>),
+    ProgressTick, // For animated progress indication
     FocusNext,
     FocusPrevious,
 }

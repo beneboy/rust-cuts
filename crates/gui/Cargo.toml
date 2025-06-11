@@ -9,6 +9,6 @@ path = "src/main.rs"
 
 [dependencies]
 rust-cuts-core = { path = "../core" }
-iced = { version = "0.13.1", features = ["tokio", "debug"] }
+iced = { version = "0.13.1", features = ["tokio", "debug", "svg"] }
 tracing-subscriber = "0.3.19"     # Keep same version as CLI for consistency
 leon = "3.0.1"  # Template engine, same version as core

@@ -79,12 +79,12 @@ fn command_details_view(app: &RustCuts) -> Element<Message> {
                 }
             }
 
-            details = details.push(components::action_buttons(&app.execution_state));
+            details = details.push(components::action_buttons(&app.execution_state, app.progress_counter));
 
             // Always show output area (even if empty) at full width
-            let output_content = if app.execution_state == crate::app::ExecutionState::RunningInline && !app.streaming_output.is_empty() {
-                // Show streaming output while command is running
-                text(&app.streaming_output).size(14)
+            let output_content = if app.execution_state == crate::app::ExecutionState::RunningInline {
+                // Show "Running..." while command is executing
+                text("Running command...").size(14).color([0.5, 0.5, 0.5])
             } else if let Some(output) = &app.output {
                 // Show final output when command is complete
                 match output {

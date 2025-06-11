@@ -14,6 +14,7 @@ pub struct RustCuts {
     pub current_parameters: Vec<String>, // Track parameter order for focus management
     pub focused_parameter_index: Option<usize>, // Track which parameter is currently focused
     pub execution_state: ExecutionState, // Track if commands are running
+    pub progress_counter: usize, // For animated progress dots
 }
 
 impl RustCuts {
@@ -30,6 +31,7 @@ impl RustCuts {
                 self.streaming_output.clear();
                 self.current_parameters.clear();
                 self.focused_parameter_index = None;
+                self.progress_counter = 0;
                 
                 if let Some(cmd) = self.command_definitions.get(index) {
                     // Extract all template variables from command strings
@@ -89,6 +91,7 @@ impl RustCuts {
                         self.execution_state = ExecutionState::RunningInline;
                         self.output = None; // Clear previous output
                         self.streaming_output.clear(); // Clear streaming output
+                        self.progress_counter = 0; // Reset progress animation
                         let params = self.parameter_values.clone();
                         return Task::perform(
                             async move { execute_command(cmd, params).await },
@@ -166,6 +169,13 @@ impl RustCuts {
                 }
                 Task::none()
             }
+            Message::ProgressTick => {
+                // Increment progress counter for spinner animation
+                if self.execution_state == ExecutionState::RunningInline {
+                    self.progress_counter = self.progress_counter.wrapping_add(1);
+                }
+                Task::none()
+            }
         }
     }
 
@@ -174,7 +184,7 @@ impl RustCuts {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        event::listen_with(|event, _status, _window| {
+        let keyboard_events = event::listen_with(|event, _status, _window| {
             match event {
                 iced::Event::Keyboard(keyboard::Event::KeyPressed {
                     key: keyboard::Key::Named(keyboard::key::Named::Tab),
@@ -189,7 +199,16 @@ impl RustCuts {
                 }
                 _ => None,
             }
-        })
+        });
+
+        let progress_ticker = if self.execution_state == ExecutionState::RunningInline {
+            iced::time::every(std::time::Duration::from_millis(16)) // 60 FPS
+                .map(|_| Message::ProgressTick)
+        } else {
+            Subscription::none()
+        };
+
+        Subscription::batch([keyboard_events, progress_ticker])
     }
 }
 
@@ -207,6 +226,7 @@ impl Default for RustCuts {
             current_parameters: Vec::new(),
             focused_parameter_index: None,
             execution_state: ExecutionState::Idle,
+            progress_counter: 0,
         }
     }
 }
