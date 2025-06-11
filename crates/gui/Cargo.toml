@@ -2,6 +2,9 @@
 name = "rust-cuts-gui"
 version = "0.2.0"
 edition = "2021"
+description = "A GUI for rust-cuts command management tool"
+license = "MIT"
+authors = ["Your Name <your.email@example.com>"]
 
 [[bin]]
 name = "rcg"  # rust-cuts-gui
@@ -12,3 +15,19 @@ rust-cuts-core = { path = "../core" }
 iced = { version = "0.13.1", features = ["tokio", "debug", "svg"] }
 tracing-subscriber = "0.3.19"     # Keep same version as CLI for consistency
 leon = "3.0.1"  # Template engine, same version as core
+
+# Bundle configuration for macOS app
+[package.metadata.bundle]
+name = "RustCuts"
+identifier = "com.rustcuts.app"
+version = "0.2.0"
+resources = []
+copyright = "Copyright © 2024"
+category = "DeveloperTool"
+short_description = "Command management GUI"
+long_description = "A graphical interface for managing and executing saved terminal commands with templating support"
+osx_frameworks = []
+osx_minimum_system_version = "10.15"
+
+[package.metadata.bundle.bin.rcg]
+name = "RustCuts"
